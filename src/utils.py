@@ -54,7 +54,7 @@ class split_halos():
 
         return sel_mask
 
-    def stellar_mf(self, sim=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None):
+    def stellar_mf(self, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None):
         '''
             Function to compute stellar mass function from the chosen population of halos
 
@@ -77,7 +77,7 @@ class split_halos():
         sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
         mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
 
-        mstar = ( (sim.sub['MassType'][:,4])[sel_mask] * 1e10 )[mask]
+        mstar = ( (self.sim.sub['MassType'][:,4])[sel_mask] * 1e10 )[mask]
         mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
         nhalos = len(fof_choice)
 
