@@ -1,9 +1,27 @@
 import numpy as np
+import bacco
 
 class split_halos():
 
     def __init__(self, sim):
         self.sim = sim
+
+    def q_pos(self, sim, npart=4320, BoxSize=500, corr_fac=125):
+        
+        gal_mbid = sim.sub['IDMostbound']
+
+        q = np.zeros(gal_mbid.shape + (3,), dtype=np.float32)
+
+        q[..., 0] = gal_mbid // npart**2
+        q[..., 1] = (gal_mbid // npart) % npart
+        q[..., 2] = gal_mbid % npart
+
+        # normalize correctly
+        q *= (BoxSize / npart)
+
+        q[..., 0] = ( q[...,0] - corr_fac ) % BoxSize # Correction due to differences between MTNG and MTNG-mimic
+
+        return q
 
     def sample_halos(self, Nhalos=None, sel_mask=None):
         '''
@@ -38,6 +56,7 @@ class split_halos():
 
         parent_mass = self.sim.sub['parent_halo']['mfof'] * 1e10
 
+        # subselection by concentration
         if vmax_sel is not None:
             halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
             parent_vmax = halo_vmax[self.sim.sub['fof_index']]
@@ -83,5 +102,86 @@ class split_halos():
 
         bins = np.logspace(8, 13, nbins)
         hist = np.histogram(mstar, bins=bins)
+
+        return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
+
+    def get_bpo(
+            self, recompute=False, IA_terms=("J2=2", "J2=22", "J22=2", "J222=", "J2-2-2-")
+            ):
+        
+        import bacco.probabilistic_bias as pb
+
+        # MTNG Mimic
+        dir_name_dm = "/scratch/cosmosims/TNG_Family/MTNG-mimic/output/"
+
+        dm_mtng = bacco.Simulation(
+            basedir=dir_name_dm, halo_file="groups_085/fof_subhalo_history_tab_orph_wweight_085",
+            sim_format='gadget_hdf5', ngenic_phases=True, phase_type=2, fixedPk=True
+            )
+
+        dm_mtng.header['Seed'] = 100672
+
+        # These are the variables that need to be measured on a Lagrangian grid
+        variables = ("Txx", "Txy", "Txz", "Tyy", "Tyz", "Tzz",)
+
+        pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=0.2, ngrid=384, cachedir='/lscratch/fgmaion/Intrinsic_Alignments/MTNG/Notebooks/cachedir')
+        # Note if you pass the parameter  cachedir="path/to/some/empty/directory"
+        # you may save some time, at the cost of storing some extra files
+
+        IA_model = pbm.setup_bias_model(pb.IA_TensorBiasND, terms=IA_terms, spatial_order=2)
+
+        q = self.q_pos(self.sim)
+        I = bacco.utils.S_to_I(self.sim.sub['subhalo_stellar_MOI'])
+
+        # This selection defines galaxies in general
+        sel = np.where( (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+
+        z = 1 / self.Cosmology.expfactor - 1
+
+        if recompute:
+            bias = pbm.fit_bias(model=IA_model, tracer_q=q[sel], error='qjack4', tracer_properties={'I':I[sel]})
+            bpo = np.float32(IA_model.bpo)
+            np.save("/lscratch/fgmaion/Intrinsic_Alignments/MTNG/biases/cs_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
+        else:
+            load_bias = np.load("/lscratch/fgmaion/Intrinsic_Alignments/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
+            bpo = load_bias['bpo']
+
+        return bpo
+
+#TODO: I have to incorporate here a method for splitting between centrals and satellites.
+# the final goal is to have, for centrals, the bias as a function of stellar mass, and for satellites, something else.
+    def cs_value(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
+        '''
+            Function to compute bias of chosen population of subhalos
+
+            Object:sim
+            This is a bacco.simulation object, representing a simulation from which we will load all the information
+
+            array of floats:bpo
+            Array containing bias per object of all the subhalos
+
+            array of floats:mass_edges
+            Edges of the halo mass-bin over which we will compute the stellar mass-function
+
+            int:nbins
+            Number of bins over which to build the histogram
+
+            int:Nhalos
+            Number of halos that we wish to sample at this mass-bin
+
+            Bool:vmax_sel
+            Whether to split by concentration besides the mass selection
+        '''
+        
+        sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
+        mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
+
+        if bpo is None:
+            bpo = self.get_cs_bpo(recompute=recompute)
+
+        bpo_sel = bpo[mask]
+
+        mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
+        nhalos = len(fof_choice)
 
         return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
