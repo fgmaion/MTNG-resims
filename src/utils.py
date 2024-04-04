@@ -69,7 +69,7 @@ class split_halos():
             else:
                 raise ValueError('The option given for vmax_sel is not supported.')
         else:
-            sel_mask = np.where( (parent_mass>10**mass_edges[0]) & (parent_mass<10**mass_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )
+            sel_mask = np.where( (parent_mass>10**mass_edges[0]) & (parent_mass<10**mass_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
 
         return sel_mask
 
@@ -139,58 +139,61 @@ class split_halos():
 
             bias = pbm.fit_bias(model=IA_model, tracer_q=q, error='qjack4', tracer_properties={'I':I})
             bpo = np.float32(IA_model.bpo)
-            np.save("/lscratch/fgmaion/Intrinsic_Alignments/MTNG/biases/cs_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
+            np.save("/lscratch/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
         
         else:
-            load_bias = np.load("/lscratch/fgmaion/Intrinsic_Alignments/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
-            bpo = load_bias['bpo']
+            load_bias = np.load("/lscratch/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
+            bpo = load_bias['cs_bpo']
 
         return bpo
 
-#TODO: I have to incorporate here a method for splitting between centrals and satellites.
-# the final goal is to have, for centrals, the bias as a function of stellar mass, and for satellites, something else.
-    def cs_sm_central(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
+    def bias_sm_central(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
         
+        # subhalos that belong to halos of mass in mass_edges
         sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
+        # halos that have been randomly selected from the parents of subhalos above
         mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
+        # the array mask here is a Boolean array telling us which elements of sel_mask got
+        # selected after the random sampling of halos
+
+        sel_mask = sel_mask[np.where(mask)[0]]
+
+        # stellar mass of final selected subhalos
+        mstar = ( (self.sim.sub['MassType'][:,4])[sel_mask] * 1e10 )
+        mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
+        nhalos = len(fof_choice)
 
         if bpo is None:
-            bpo = self.get_cs_bpo(recompute=recompute)
+            bpo = self.get_bpo(recompute=recompute)
 
-        # this selection defines galaxies in general
-        sel = np.where( (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
-        
-        # selection of central galaxies
-        sel_cen = sel[np.where(self.sim.sub['central'][sel])]
+       # selection of central galaxies
+        sel_cen = sel_mask[np.where(self.sim.sub['central'][sel_mask])]
 
         # selection of galaxies per stellar-mass
         D = 0.2
         ms_edges = np.vstack((np.arange(9,13-D,D), np.arange(9+D,13,D))).T
 
-        mstar = (self.sim.sub['MassType'][:,4][sel] * 1e10 )
-        sel_mstar = sel[np.where( (np.log10(mstar)>mass_edges[m,0]) & (np.log10(mstar)<mass_edges[1]) )]
+        bpo_sel = np.zeros((ms_edges.shape[0], 6))
+        for m in range(ms_edges.shape[0]):
+            sel_mstar = sel_mask[np.where( (np.log10(mstar)>ms_edges[m,0]) & (np.log10(mstar)<ms_edges[m,1]) )]
+            if len(sel_mstar)!=0:
+                bpo_sel[m] = np.mean( bpo[sel_mstar], axis=0 )
+            else:
+                bpo_sel[m] = np.zeros(6)
 
+        return  {'bias':bpo_sel, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
 
-        mask = np.intersect1d(sel_cen, sel_mstar[m])
-
-        bpo_sel = bpo[mask]
-
-        mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
-        nhalos = len(fof_choice)
-
-        return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
-
-    def cs_rad_sat(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
+    # def cs_rad_sat(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
         
-        sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
-        mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
+    #     sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
+    #     mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
 
-        if bpo is None:
-            bpo = self.get_cs_bpo(recompute=recompute)
+    #     if bpo is None:
+    #         bpo = self.get_cs_bpo(recompute=recompute)
 
-        bpo_sel = bpo[mask]
+    #     bpo_sel = bpo[mask]
 
-        mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
-        nhalos = len(fof_choice)
+    #     mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
+    #     nhalos = len(fof_choice)
 
-        return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
+    #     return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
