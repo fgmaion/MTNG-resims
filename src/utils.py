@@ -109,39 +109,38 @@ class split_halos():
             self, recompute=False, IA_terms=("J2=2", "J2=22", "J22=2", "J222=", "J2-2-2-")
             ):
         
-        import bacco.probabilistic_bias as pb
-
-        # MTNG Mimic
-        dir_name_dm = "/scratch/cosmosims/TNG_Family/MTNG-mimic/output/"
-
-        dm_mtng = bacco.Simulation(
-            basedir=dir_name_dm, halo_file="groups_085/fof_subhalo_history_tab_orph_wweight_085",
-            sim_format='gadget_hdf5', ngenic_phases=True, phase_type=2, fixedPk=True
-            )
-
-        dm_mtng.header['Seed'] = 100672
-
-        # These are the variables that need to be measured on a Lagrangian grid
-        variables = ("Txx", "Txy", "Txz", "Tyy", "Tyz", "Tzz",)
-
-        pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=0.2, ngrid=384, cachedir='/lscratch/fgmaion/Intrinsic_Alignments/MTNG/Notebooks/cachedir')
-        # Note if you pass the parameter  cachedir="path/to/some/empty/directory"
-        # you may save some time, at the cost of storing some extra files
-
-        IA_model = pbm.setup_bias_model(pb.IA_TensorBiasND, terms=IA_terms, spatial_order=2)
-
-        q = self.q_pos(self.sim)
-        I = bacco.utils.S_to_I(self.sim.sub['subhalo_stellar_MOI'])
-
-        # This selection defines galaxies in general
-        sel = np.where( (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
-
-        z = 1 / self.Cosmology.expfactor - 1
-
+        z = 1 / self.sim.Cosmology.expfactor - 1
+        
         if recompute:
-            bias = pbm.fit_bias(model=IA_model, tracer_q=q[sel], error='qjack4', tracer_properties={'I':I[sel]})
+
+            import bacco.probabilistic_bias as pb
+
+            # MTNG Mimic
+            dir_name_dm = "/scratch/cosmosims/TNG_Family/MTNG-mimic/output/"
+
+            dm_mtng = bacco.Simulation(
+                basedir=dir_name_dm, halo_file="groups_085/fof_subhalo_history_tab_orph_wweight_085",
+                sim_format='gadget_hdf5', ngenic_phases=True, phase_type=2, fixedPk=True
+                )
+
+            dm_mtng.header['Seed'] = 100672
+
+            # These are the variables that need to be measured on a Lagrangian grid
+            variables = ("Txx", "Txy", "Txz", "Tyy", "Tyz", "Tzz",)
+
+            pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=0.2, ngrid=384, cachedir='/lscratch/fgmaion/Intrinsic_Alignments/MTNG/Notebooks/cachedir')
+            # Note if you pass the parameter  cachedir="path/to/some/empty/directory"
+            # you may save some time, at the cost of storing some extra files
+
+            IA_model = pbm.setup_bias_model(pb.IA_TensorBiasND, terms=IA_terms, spatial_order=2)
+
+            q = self.q_pos(self.sim)
+            I = bacco.utils.S_to_I(self.sim.sub['subhalo_stellar_MOI'])
+
+            bias = pbm.fit_bias(model=IA_model, tracer_q=q, error='qjack4', tracer_properties={'I':I})
             bpo = np.float32(IA_model.bpo)
             np.save("/lscratch/fgmaion/Intrinsic_Alignments/MTNG/biases/cs_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
+        
         else:
             load_bias = np.load("/lscratch/fgmaion/Intrinsic_Alignments/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
             bpo = load_bias['bpo']
@@ -150,28 +149,38 @@ class split_halos():
 
 #TODO: I have to incorporate here a method for splitting between centrals and satellites.
 # the final goal is to have, for centrals, the bias as a function of stellar mass, and for satellites, something else.
-    def cs_value(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
-        '''
-            Function to compute bias of chosen population of subhalos
+    def cs_sm_central(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
+        
+        sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
+        mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
 
-            Object:sim
-            This is a bacco.simulation object, representing a simulation from which we will load all the information
+        if bpo is None:
+            bpo = self.get_cs_bpo(recompute=recompute)
 
-            array of floats:bpo
-            Array containing bias per object of all the subhalos
+        # this selection defines galaxies in general
+        sel = np.where( (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+        
+        # selection of central galaxies
+        sel_cen = sel[np.where(self.sim.sub['central'][sel])]
 
-            array of floats:mass_edges
-            Edges of the halo mass-bin over which we will compute the stellar mass-function
+        # selection of galaxies per stellar-mass
+        D = 0.2
+        ms_edges = np.vstack((np.arange(9,13-D,D), np.arange(9+D,13,D))).T
 
-            int:nbins
-            Number of bins over which to build the histogram
+        mstar = (self.sim.sub['MassType'][:,4][sel] * 1e10 )
+        sel_mstar = sel[np.where( (np.log10(mstar)>mass_edges[m,0]) & (np.log10(mstar)<mass_edges[1]) )]
 
-            int:Nhalos
-            Number of halos that we wish to sample at this mass-bin
 
-            Bool:vmax_sel
-            Whether to split by concentration besides the mass selection
-        '''
+        mask = np.intersect1d(sel_cen, sel_mstar[m])
+
+        bpo_sel = bpo[mask]
+
+        mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
+        nhalos = len(fof_choice)
+
+        return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
+
+    def cs_rad_sat(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
         
         sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
         mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
