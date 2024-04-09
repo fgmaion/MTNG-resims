@@ -45,7 +45,7 @@ class split_halos():
 
         return mask, fof_choice
 
-    def subhalo_sel(self, mass_edges=None, vmax_sel=False):
+    def subhalo_sel(self, mhalo_edges=None, vmax_sel=False):
         '''
         array of floats:mass_edges
         Contains the edges of the mass-bin in which we wish to select our halo
@@ -61,19 +61,19 @@ class split_halos():
             halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
             parent_vmax = halo_vmax[self.sim.sub['fof_index']]
 
-            avg_vmax = np.mean( parent_vmax[np.where( (parent_mass>10**mass_edges[0]) & (parent_mass<10**mass_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1))] )
+            avg_vmax = np.mean( parent_vmax[np.where( (parent_mass>10**mhalo_edges[0]) & (parent_mass<10**mhalo_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1))] )
             if vmax_sel == 'high':
-                sel_mask = np.where( (parent_mass>10**mass_edges[0]) & (parent_mass<10**mass_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) & (parent_vmax > avg_vmax ) )
+                sel_mask = np.where( (parent_mass>10**mhalo_edges[0]) & (parent_mass<10**mhalo_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) & (parent_vmax > avg_vmax ) )
             elif vmax_sel == 'low':
-                sel_mask = np.where( (parent_mass>10**mass_edges[0]) & (parent_mass<10**mass_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) & (parent_vmax <= avg_vmax) )
+                sel_mask = np.where( (parent_mass>10**mhalo_edges[0]) & (parent_mass<10**mhalo_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) & (parent_vmax <= avg_vmax) )
             else:
                 raise ValueError('The option given for vmax_sel is not supported.')
         else:
-            sel_mask = np.where( (parent_mass>10**mass_edges[0]) & (parent_mass<10**mass_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+            sel_mask = np.where( (parent_mass>10**mhalo_edges[0]) & (parent_mass<10**mhalo_edges[1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
 
         return sel_mask
 
-    def stellar_mf(self, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None):
+    def stellar_mf(self, mhalo_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None):
         '''
             Function to compute stellar mass function from the chosen population of halos
 
@@ -93,7 +93,7 @@ class split_halos():
             Whether to split by concentration besides the mass selection
         '''
         
-        sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
+        sel_mask         = self.subhalo_sel(mhalo_edges=mhalo_edges, vmax_sel=vmax_sel)
         mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
 
         mstar = ( (self.sim.sub['MassType'][:,4])[sel_mask] * 1e10 )[mask]
@@ -147,41 +147,55 @@ class split_halos():
 
         return bpo
 
-    def bias_sm_central(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
+    def bias_sm(self, bpo=None, mhalo_edges=np.array([[12.5,13],]), nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
         
-        # subhalos that belong to halos of mass in mass_edges
-        sel_mask         = self.subhalo_sel(mass_edges=mass_edges, vmax_sel=vmax_sel)
-        # halos that have been randomly selected from the parents of subhalos above
-        mask, fof_choice = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_mask)
-        # the array mask here is a Boolean array telling us which elements of sel_mask got
-        # selected after the random sampling of halos
-
-        sel_mask = sel_mask[np.where(mask)[0]]
-
-        # stellar mass of final selected subhalos
-        mstar = ( (self.sim.sub['MassType'][:,4])[sel_mask] * 1e10 )
-        mhalos_tot  = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
-        nhalos = len(fof_choice)
-
         if bpo is None:
             bpo = self.get_bpo(recompute=recompute)
 
-       # selection of central galaxies
-        sel_cen = sel_mask[np.where(self.sim.sub['central'][sel_mask])]
+        mstar = []
+        bpo_sel = []
+        mhalos_tot = 0
+        nhalos = 0
+        for m in range( mhalo_edges.shape[0] ):
+
+            # subhalos that belong to halos of mass in mass_edges
+            sel_mask = self.subhalo_sel(mhalo_edges=mhalo_edges[m], vmax_sel=vmax_sel)
+            
+            # halos that have been randomly selected from the parents of subhalos above
+            mask, fof_choice = self.sample_halos(Nhalos=Nhalos[m] if Nhalos is not None else Nhalos, sel_mask=sel_mask)
+            # the array mask here is a Boolean array telling us which elements of sel_mask got
+            # selected after the random sampling of halos
+
+            sel_mask = sel_mask[np.where(mask)[0]]
+
+            # selection of central galaxies
+            sel_mask = sel_mask[np.where(self.sim.sub['central'][sel_mask])]
+
+            # stellar mass of final selected subhalos
+            mstar.extend( (self.sim.sub['MassType'][:,4])[sel_mask] * 1e10 )
+            mhalos_tot += np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
+            nhalos += len(fof_choice)
+
+            # bias per object of final selected subhalos
+            bpo_sel.extend(bpo[sel_mask])
+
+        mstar = np.array(mstar, dtype=np.float)
+        bpo_sel = np.array(bpo_sel)            
 
         # selection of galaxies per stellar-mass
         D = 0.2
-        ms_edges = np.vstack((np.arange(9,13-D,D), np.arange(9+D,13,D))).T
-
-        bpo_sel = np.zeros((ms_edges.shape[0], 6))
-        for m in range(ms_edges.shape[0]):
-            sel_mstar = sel_mask[np.where( (np.log10(mstar)>ms_edges[m,0]) & (np.log10(mstar)<ms_edges[m,1]) )]
-            if len(sel_mstar)!=0:
-                bpo_sel[m] = np.mean( bpo[sel_mstar], axis=0 )
+        ms_edges = np.arange(9,13,D)
+        idx = np.digitize(np.log10(mstar), bins=ms_edges)
+        
+        bias = np.zeros((len(ms_edges)-1, 6))
+        for i in range(len(ms_edges)-1):
+            sel_idx = np.where(idx==i+1)[0]
+            if len(sel_idx)!=0:
+                bias[i] = np.mean( bpo_sel[sel_idx], axis=0 )
             else:
-                bpo_sel[m] = np.zeros(6)
+                bias[i] = 0
 
-        return  {'bias':bpo_sel, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
+        return  {'bias':bias, 'm_edges':ms_edges, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
 
     # def cs_rad_sat(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
         
