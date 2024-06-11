@@ -48,6 +48,8 @@ class split_halos():
 
     def subhalo_sel(self, mhalo_edges=None, vmax_sel=False, Nhalos=10):
         '''
+        Function to select subhalos belonging to the Nhalos sampled halos in mass range delimited by mhalo_edges.
+
         array of floats:mass_edges
         Contains the edges of the mass-bin in which we wish to select our halo
 
@@ -165,6 +167,9 @@ class split_halos():
         return bpo
 
     def bias_sm(self, sel_mask=None, bpo=None, mhalo_edges=None, Nhalos=None, vmax_sel=None, recompute=False):
+        '''
+        Function to get the bias of a certain selection sel_mask, binned as a function of stellar masses
+        '''
         
         if bpo is None:
             bpo = self.get_bpo(recompute=recompute)
@@ -191,8 +196,8 @@ class split_halos():
         bpo_sel = np.array(bpo_sel)            
 
         # selection of galaxies per stellar-mass
-        D = 0.2
-        ms_edges = np.arange(9,13,D)
+        D = 0.5
+        ms_edges = np.arange(9.5,12.5,D)
         idx = np.digitize(np.log10(mstar), bins=ms_edges)
         
         bias = np.zeros((len(ms_edges)-1, 6))
