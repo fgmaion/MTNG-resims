@@ -1,5 +1,6 @@
 import numpy as np
 import bacco
+import h5py
 
 class split_halos():
 
@@ -227,3 +228,38 @@ class split_halos():
     #     nhalos = len(fof_choice)
 
     #     return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
+
+def read_zoom(base=None, filebase="snapshot_ics_000"):
+
+    files = [filebase+".{:d}.hdf5".format(ifile) for ifile in range(32)]
+
+    with h5py.File(base+files[0], 'r') as f:
+        NpartTotal = np.uint64(f['Header'].attrs['NumPart_Total'])
+
+    pos1 = np.zeros((NpartTotal[1], 3), dtype=np.float32)
+    pos2 = np.zeros((NpartTotal[2], 3), dtype=np.float32)
+    pos3 = np.zeros((NpartTotal[3], 3), dtype=np.float32)
+
+    istart1 = np.uint64(0); istart2 = np.uint64(0); istart3 = np.uint64(0)
+    for ffname in files:
+        with h5py.File(base+ffname, 'r') as f:
+            npts1 = np.uint64(f['Header'].attrs['NumPart_ThisFile'][1])
+            npts2 = np.uint64(f['Header'].attrs['NumPart_ThisFile'][2])
+            npts3 = np.uint64(f['Header'].attrs['NumPart_ThisFile'][3])
+
+            print(
+                'Read data for {0}/{1} {1}/{2} {3}/{4} particles...'.format(
+                    istart1+npts1, NpartTotal[1], istart2+npts2, NpartTotal[2], istart3+npts3, NpartTotal[3]))
+
+            if npts1 >0:
+                pos1[istart1:istart1 + npts1] = f[u'PartType1']['Coordinates'][()]
+            if npts2 >0:
+                pos2[istart2:istart2 + npts2] = f[u'PartType2']['Coordinates'][()]
+            if npts3 >0:
+                pos3[istart3:istart3 + npts3] = f[u'PartType3']['Coordinates'][()]
+
+        istart1 += npts1
+        istart2 += npts2
+        istart3 += npts3
+
+    return {'pos1':pos1, 'pos2':pos2, 'pos3':pos3}
