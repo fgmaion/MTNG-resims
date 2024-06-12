@@ -46,7 +46,7 @@ class split_halos():
         
         return mask, fof_choice, halo_frac
 
-    def subhalo_sel(self, mhalo_edges=None, vmax_sel=False, Nhalos=10):
+    def subhalo_sel(self, mhalo_edges=None, vmax_sel=False, Nhalos=10, DM_only=False):
         '''
         Function to select subhalos belonging to the Nhalos sampled halos in mass range delimited by mhalo_edges.
 
@@ -76,8 +76,11 @@ class split_halos():
             fof_choice = []
             halo_frac = np.zeros(mhalo_edges.shape[0])
             for m in range(mhalo_edges.shape[0]):
-                # select galaxies in halos of a given mass
-                sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+                # select galaxies/subhalos in halos of a given mass
+                if DM_only is False:
+                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+                else:
+                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (self.sim.sub['len']>200) )[0]
 
                 # sample those halos randomly
                 mask, fof_temp, halo_frac[m] = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_temp)
