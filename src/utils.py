@@ -263,3 +263,28 @@ def read_zoom(base=None, filebase="snapshot_ics_000"):
         istart3 += npts3
 
     return {'pos1':pos1, 'pos2':pos2, 'pos3':pos3}
+
+def read_cpu(filename=None, skiprows=[]):
+with open(filename) as f:
+    lines = f.readlines()
+
+d = {}
+
+i=0
+for line in lines:
+    line.strip()
+
+    if i == 0:
+        columns = [item.strip() for item in line.split(',')]
+        for index, elem in enumerate(columns[:-1]):
+            d[columns[index]] = []
+    elif i in skiprows:
+        i = i + 1
+        continue
+    else:
+        data = [item.strip() for item in line.split(',')]
+        for index, elem in enumerate(data[:-1]):
+            d[columns[index]].append(float(data[index]))
+    i = i + 1
+
+return d
