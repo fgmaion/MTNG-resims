@@ -24,7 +24,7 @@ class split_halos():
 
         return q
 
-    def sample_halos(self, Nhalos=None, sel_mask=None):
+    def sample_halos(self, Nhalos=None, gal_sel=None, sel_mask=None):
         '''
             int:Nhalos
             Amount of halos we wish to randomly select from total population
@@ -34,7 +34,7 @@ class split_halos():
 
         '''
 
-        index_mask = self.sim.sub['fof_index'][sel_mask]
+        index_mask = self.sim.sub['fof_index'][gal_sel][sel_mask]
 
         unique_indices = np.unique(index_mask)
         if Nhalos is not None:
@@ -75,17 +75,25 @@ class split_halos():
         else:
             sel_mask = {}
             fof_choice = []
+            mbin_tot = np.zeros(mhalo_edges.shape[0])
             halo_frac = np.zeros(mhalo_edges.shape[0])
             for m in range(mhalo_edges.shape[0]):
                 # select galaxies/subhalos in halos of a given mass
                 if DM_only is False:
-                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+                    gal_sel = np.where( (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+                    sel_temp = np.where( (parent_mass[gal_sel]>10**mhalo_edges[m,0]) & (parent_mass[gal_sel] <10**mhalo_edges[m,1]) )[0]
                 else:
                     sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (self.sim.sub['len']>200) )[0]
 
                 # sample those halos randomly
-                mask, fof_temp, halo_frac[m] = self.sample_halos(Nhalos=Nhalos, sel_mask=sel_temp)
+                if Nhalos is None or isinstance(Nhalos, int):
+                    mask, fof_temp, halo_frac[m] = self.sample_halos(Nhalos=Nhalos, gal_sel=gal_sel, sel_mask=sel_temp)
+                else:
+                    mask, fof_temp, halo_frac[m] = self.sample_halos(Nhalos=Nhalos[m], gal_sel=gal_sel, sel_mask=sel_temp)
                 fof_choice.extend(fof_temp)
+
+                # get the mass in the selected halos
+                mbin_tot[m] = np.sum( self.sim.fof['halo_mfof'][fof_temp] * 1e10 )
 
                 # get the galaxies in the selected halos
                 sel_mask[m] = sel_temp[np.where(mask)[0]]
@@ -95,9 +103,9 @@ class split_halos():
         mhalos_tot = np.sum(self.sim.fof['halo_mfof'][fof_choice]*1e10)
         nhalos = len(fof_choice)
 
-        return {'sel':sel_mask, 'h_idx':fof_choice, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_frac':halo_frac}
+        return {'sel':sel_mask, 'h_idx':fof_choice, 'mh_tot':mhalos_tot, 'mh_bin':mbin_tot, 'Nh':nhalos, 'h_frac':halo_frac, 'gal_sel':gal_sel}
 
-    def stellar_mf(self, sel_mask=None, mhalo_edges=None, nbins=100, Nhalos=None, vmax_sel=None):
+    def stellar_mf(self, gal_sel=None, sel_mask=None, mhalo_edges=None, nbins=100, Nhalos=None, vmax_sel=None):
         '''
             Function to compute stellar mass function from the chosen population of halos
 
@@ -123,13 +131,14 @@ class split_halos():
         bins = np.logspace(8, 13, nbins)
         hist = np.zeros(nbins-1)
         for m in range(len(sel_mask['sel'])):
-            mstar = ( (self.sim.sub['MassType'][:,4])[sel_mask['sel'][m]] * 1e10 )
-            hist += np.histogram(mstar, bins=bins)[0] / sel_mask['h_frac'][m]
+            if sel_mask['h_frac'][m]!=0:
+                mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10
+                hist += np.histogram(mstar, bins=bins)[0] / sel_mask['h_frac'][m]
 
         return  {'smf':hist, 'bins':bins}
 
     def get_bpo(
-            self, recompute=False, IA_terms=("J2=2", "J2=22", "J22=2", "J222=", "J2-2-2-")
+            self, recompute=False, IA_terms=("J2=2", "J222=", "J2-2-2-")
             ):
         
         z = 1 / self.sim.Cosmology.expfactor - 1
@@ -151,7 +160,7 @@ class split_halos():
             # These are the variables that need to be measured on a Lagrangian grid
             variables = ("Txx", "Txy", "Txz", "Tyy", "Tyz", "Tzz",)
 
-            pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=0.2, ngrid=384, cachedir='/lscratch/fgmaion/Intrinsic_Alignments/MTNG/Notebooks/cachedir')
+            pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=0.1, ngrid=384)
             # Note if you pass the parameter  cachedir="path/to/some/empty/directory"
             # you may save some time, at the cost of storing some extra files
 
@@ -162,15 +171,15 @@ class split_halos():
 
             bias = pbm.fit_bias(model=IA_model, tracer_q=q, error='qjack4', tracer_properties={'I':I})
             bpo = np.float32(IA_model.bpo)
-            np.save("/lscratch/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
+            np.save("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
         
         else:
-            load_bias = np.load("/lscratch/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
+            load_bias = np.load("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
             bpo = load_bias['cs_bpo']
 
         return bpo
 
-    def bias_sm(self, sel_mask=None, bpo=None, mhalo_edges=None, Nhalos=None, vmax_sel=None, recompute=False):
+    def bias_sm(self, gal_sel=None, sel_mask=None, bpo=None, mhalo_edges=None, Nhalos=None, vmax_sel=None, recompute=False):
         '''
         Function to get the bias of a certain selection sel_mask, binned as a function of stellar masses
         '''
@@ -191,7 +200,7 @@ class split_halos():
         sel_comb = np.array(sel_comb)
 
         # stellar mass of final selected subhalos
-        mstar = (self.sim.sub['MassType'][:,4])[sel_comb] * 1e10
+        mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_comb] * 1e10
 
         # bias per object of final selected subhalos
         bpo_sel = bpo[sel_comb]
@@ -204,7 +213,7 @@ class split_halos():
         ms_edges = np.arange(9.5,12.5,D)
         idx = np.digitize(np.log10(mstar), bins=ms_edges)
         
-        bias = np.zeros((len(ms_edges)-1, 6))
+        bias = np.zeros((len(ms_edges)-1, 5))
         for i in range(len(ms_edges)-1):
             sel_idx = np.where(idx==i+1)[0]
             if len(sel_idx)!=0:
