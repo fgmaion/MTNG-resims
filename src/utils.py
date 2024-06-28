@@ -171,27 +171,45 @@ class split_halos():
             sel_mask = self.subhalo_sel(mhalo_edges=mhalo_edges, vmax_sel=vmax_sel, Nhalos=Nhalos)
         
         bins = np.logspace(8, 13, nbins)
-        hist = np.zeros(nbins-1)
+        counts     = np.zeros(nbins-1)
+        hist       = np.zeros(nbins-1)
+        mstar_mean = np.zeros(nbins-1)
         if vmax_sel is True:
             length = len(sel_mask['sel']['high_c'])
         else:
             length = len(sel_mask['sel'])
         for m in range(length):
             if vmax_sel is True:
-                mstar_h = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel']['high_c'][m]] * 1e10
-                mstar_l = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel']['low_c'][m]] * 1e10
+                mstar_h = self.sim.sub['MassInHalfRadType'][:,4][gal_sel][sel_mask['sel']['high_c'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
+                mstar_l = self.sim.sub['MassInHalfRadType'][:,4][gal_sel][sel_mask['sel']['low_c'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
 
                 if sel_mask['h_frac']['high_c'][m]!=0:
-                    hist += np.histogram(mstar_h, bins=bins)[0] / sel_mask['h_frac']['high_c'][m]
+                    ids = np.digitize(mstar_h, bins)
+                    counts_i = [np.sum( np.ones(len(mstar_h))[np.where(ids==i)]) for i in range(1,len(bins))]
+                    counts += counts_i
+                    hist   += counts_i / sel_mask['h_frac']['high_c'][m]
+                    mstar_mean += [np.sum(mstar_h[np.where(ids==i)]) for i in range(1,len(bins))]
+
                 if sel_mask['h_frac']['low_c'][m]!=0:
-                    hist += np.histogram(mstar_l, bins=bins)[0] / sel_mask['h_frac']['low_c'][m]
+                    ids = np.digitize(mstar_l, bins)
+                    counts_i = [np.sum( np.ones(len(mstar_l))[np.where(ids==i)]) for i in range(1,len(bins))]
+                    counts += counts_i
+                    hist   += counts_i / sel_mask['h_frac']['low_c'][m]
+                    mstar_mean += [np.sum(mstar_l[np.where(ids==i)]) for i in range(1,len(bins))]
+
             else:
                 if sel_mask['h_frac'][m]!=0:
-                    mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10
-                    hist += np.histogram(mstar, bins=bins)[0] / sel_mask['h_frac'][m]
+                    mstar = self.sim.sub['MassInHalfRadType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
+                    ids = np.digitize(mstar, bins)
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                    counts += counts_i
+                    hist   += counts_i / sel_mask['h_frac'][m]
+                    mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
 
+        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+        norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
 
-        return  {'smf':hist, 'bins':bins}
+        return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / counts}
 
     def get_bpo(
             self, recompute=False, IA_terms=("J2=2", "J222=", "J2-2-2-")
