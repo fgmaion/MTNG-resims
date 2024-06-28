@@ -63,58 +63,63 @@ class split_halos():
         # Get the galaxy parent-halo masses
         parent_mass = self.sim.sub['parent_halo']['mfof'][gal_sel] * 1e10
 
+        # Total Mass
+        mhalos_tot = 0
+        nhalos = 0
+        
         sel_mask = {}
         # subselection by concentration
         if vmax_sel is True:
             fof_choice = {}
-            fof_choice['high_c'] = []
-            fof_choice['low_c'] = []
-
             halo_frac = {}
             mbin_tot = {}
-            mbin_tot['high_c'] = np.zeros(mhalo_edges.shape[0])
-            halo_frac['high_c'] = np.zeros(mhalo_edges.shape[0])
-            mbin_tot['low_c'] = np.zeros(mhalo_edges.shape[0])
-            halo_frac['low_c'] = np.zeros(mhalo_edges.shape[0])
-
             sel_mask = {}
-            sel_mask['high_c'] = {}
-            sel_mask['low_c'] = {}
             
             halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
             parent_vmax = halo_vmax[self.sim.sub['fof_index'][gal_sel]]
 
             for m in range(mhalo_edges.shape[0]):
-                avg_vmax = np.mean( parent_vmax[np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) )] )
-
-                # select galaxies in halos of given mass/concentration
-                sel_temp_high = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (parent_vmax > avg_vmax ) )[0]
-                sel_temp_low = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (parent_vmax <= avg_vmax) )[0]
-
-                # sample those halos randomly
+                halo_frac[m] = {}
+                fof_choice[m] = {}
+                mbin_tot[m] = {}
+                sel_mask[m] = {}
+ 
+                vmax_m = parent_vmax[np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) )]
                 if Nhalos is None or isinstance(Nhalos, int):
-                    mask_h, fof_temp_h, halo_frac['high_c'][m] = self.sample_halos(Nhalos=Nhalos//2, gal_sel=gal_sel, sel_mask=sel_temp_high)
-                    mask_l, fof_temp_l, halo_frac['low_c'][m] = self.sample_halos(Nhalos=Nhalos//2, gal_sel=gal_sel, sel_mask=sel_temp_low)
+                    vmax_bins = np.linspace(vmax_m.min(), vmax_m.max(), Nhalos+1)
                 else:
-                    mask_h, fof_temp_h, halo_frac['high_c'][m] = self.sample_halos(Nhalos=Nhalos[m]//2, gal_sel=gal_sel, sel_mask=sel_temp_high)
-                    mask_l, fof_temp_l, halo_frac['low_c'][m] = self.sample_halos(Nhalos=Nhalos[m]//2, gal_sel=gal_sel, sel_mask=sel_temp_low)
-                
-                fof_choice['high_c'].extend(fof_temp_h)
-                fof_choice['low_c'].extend(fof_temp_l)
+                    vmax_bins = np.linspace(vmax_m.min(), vmax_m.max(), Nhalos[m]+1)
 
-                # get the mass in the selected halos
-                mbin_tot['high_c'][m] = np.sum( self.sim.fof['halo_mfof'][fof_temp_h] * 1e10 )
-                mbin_tot['low_c'][m] = np.sum( self.sim.fof['halo_mfof'][fof_temp_l] * 1e10 )
+                for v in range(len(vmax_bins)-1):
+                    fof_choice[m][v] = []
 
-                # get the galaxies in the selected halos
-                sel_mask['high_c'][m] = sel_temp_high[np.where(mask_h)[0]]
-                sel_mask['low_c'][m] = sel_temp_low[np.where(mask_l)[0]]
+                    # select galaxies in halos of given mass/concentration
+                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (parent_vmax > vmax_bins[v] ) & (parent_vmax < vmax_bins[v+1] ) )[0]
+                    
 
-            fof_choice['high_c'] = np.array(fof_choice['high_c'])
-            fof_choice['low_c'] = np.array(fof_choice['low_c'])
+                    v_p = v
+                    while len(sel_temp)==0:
+                        if v > (len(vmax_bins)-1)//2:
+                            v_p -= 1
+                        else:
+                            v_p+=1
+                        # there are no halos in this bin, go back to previous one
+                        sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (parent_vmax > vmax_bins[v_p] ) & (parent_vmax < vmax_bins[v_p+1] ) )[0]
 
-            mhalos_tot = np.sum( (self.sim.fof['halo_mfof'][fof_choice['high_c']]+self.sim.fof['halo_mfof'][fof_choice['low_c']]) *1e10)
-            nhalos = len(fof_choice['high_c']) + len(fof_choice['low_c'])
+                    mask, fof_temp, halo_frac[m][v] = self.sample_halos(Nhalos=1, gal_sel=gal_sel, sel_mask=sel_temp)
+                    
+                    fof_choice[m][v].extend(fof_temp)
+
+                    # get the mass in the selected halos
+                    mbin_tot[m][v] = np.sum( self.sim.fof['halo_mfof'][fof_temp] * 1e10 )
+
+                    # get the galaxies in the selected halos
+                    sel_mask[m][v] = sel_temp[np.where(mask)[0]]
+
+                    fof_choice[m][v] = np.array(fof_choice[m][v])
+
+                    mhalos_tot += 1e10 * np.sum( self.sim.fof['halo_mfof'][fof_choice[m][v]] )
+                    nhalos += len(fof_choice[m][v])
 
         else:
             fof_choice = []
