@@ -172,10 +172,24 @@ class split_halos():
         
         bins = np.logspace(8, 13, nbins)
         hist = np.zeros(nbins-1)
-        for m in range(len(sel_mask['sel'])):
-            if sel_mask['h_frac'][m]!=0:
-                mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10
-                hist += np.histogram(mstar, bins=bins)[0] / sel_mask['h_frac'][m]
+        if vmax_sel is True:
+            length = len(sel_mask['sel']['high_c'])
+        else:
+            length = len(sel_mask['sel'])
+        for m in range(length):
+            if vmax_sel is True:
+                mstar_h = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel']['high_c'][m]] * 1e10
+                mstar_l = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel']['low_c'][m]] * 1e10
+
+                if sel_mask['h_frac']['high_c'][m]!=0:
+                    hist += np.histogram(mstar_h, bins=bins)[0] / sel_mask['h_frac']['high_c'][m]
+                if sel_mask['h_frac']['low_c'][m]!=0:
+                    hist += np.histogram(mstar_l, bins=bins)[0] / sel_mask['h_frac']['low_c'][m]
+            else:
+                if sel_mask['h_frac'][m]!=0:
+                    mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10
+                    hist += np.histogram(mstar, bins=bins)[0] / sel_mask['h_frac'][m]
+
 
         return  {'smf':hist, 'bins':bins}
 
