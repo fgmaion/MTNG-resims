@@ -294,6 +294,35 @@ class split_halos():
 
     #     return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
 
+    def gas_frac(self, m500_edges=None, sel_mask=None, vmax_sel=False):
+
+        if vmax_sel is True:
+            m500c = np.log10(1e10*np.hstack( (self.sim.fof['halo_m500c'][sel_mask['h_idx']['high_c']], self.sim.fof['halo_m500c'][sel_mask['h_idx']['low_c']]) ))
+            mgas = np.hstack( (self.sim.fof['halo_mfof_type'][:,0][sel_mask['h_idx']['high_c']], self.sim.fof['halo_mfof_type'][:,0][sel_mask['h_idx']['low_c']]) )
+            mfof = np.hstack( (self.sim.fof['halo_mfof'][sel_mask['h_idx']['high_c']], self.sim.fof['halo_mfof'][sel_mask['h_idx']['low_c']]) )
+            mstel = np.hstack( (self.sim.fof['halo_mfof_type'][:,4][sel_mask['h_idx']['high_c']], self.sim.fof['halo_mfof_type'][:,4][sel_mask['h_idx']['low_c']]) )
+        else:
+            m500c = np.log10(1e10*self.sim.fof['halo_m500c'][sel_mask['h_idx']])
+            mgas = self.sim.fof['halo_mfof_type'][:,0][sel_mask['h_idx']]
+            mfof = self.sim.fof['halo_mfof'][sel_mask['h_idx']]
+            mstel = self.sim.fof['halo_mfof_type'][:,4][sel_mask['h_idx']]
+
+        
+        f_gas = np.zeros(m500_edges.shape[0])
+        f_stel = np.zeros(m500_edges.shape[0])
+        m500c_mean = np.zeros(m500_edges.shape[0])
+
+        for m in range(m500_edges.shape[0]):
+            m_sel = np.where((m500c>m500_edges[m,0])&(m500c<m500_edges[m,1]))
+
+            f_gas[m] = np.mean( mgas[m_sel] / mfof[m_sel] )
+
+            f_stel[m] = np.mean( mstel[m_sel] / mfof[m_sel] )
+
+            m500c_mean[m]= np.mean( 10**m500c[m_sel] )
+
+        return {'f_gas':f_gas, 'f_stel':f_stel, 'm500c':m500c_mean}
+
 def read_zoom(base=None, filebase="snapshot_ics_000"):
 
     files = [filebase+".{:d}.hdf5".format(ifile) for ifile in range(32)]
