@@ -101,7 +101,6 @@ class split_halos():
                     # select galaxies in halos of given mass/concentration
                     sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (vmax_v200 > vratio_bins[v] ) & (vmax_v200 < vratio_bins[v+1] ) )[0]
                     
-
                     v_p = v
                     while len(sel_temp)==0:
                         if v > (len(vratio_bins)-1)//2:
@@ -184,36 +183,26 @@ class split_halos():
         counts     = np.zeros(nbins-1)
         hist       = np.zeros(nbins-1)
         mstar_mean = np.zeros(nbins-1)
-        if vmax_sel is True:
-            length = len(sel_mask['sel']['high_c'])
-        else:
-            length = len(sel_mask['sel'])
-        for m in range(length):
+
+        for m in range(len(sel_mask['sel'])):
             if vmax_sel is True:
-                mstar_h = self.sim.sub['MassInHalfRadType'][:,4][gal_sel][sel_mask['sel']['high_c'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
-                mstar_l = self.sim.sub['MassInHalfRadType'][:,4][gal_sel][sel_mask['sel']['low_c'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
+                for v in range(len(sel_mask['sel'][m])):
+                    mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m][v]] * 1e10 / self.sim.Cosmology.pars['hubble']
 
-                if sel_mask['h_frac']['high_c'][m]!=0:
-                    ids = np.digitize(mstar_h, bins)
-                    counts_i = [np.sum( np.ones(len(mstar_h))[np.where(ids==i)]) for i in range(1,len(bins))]
-                    counts += counts_i
-                    hist   += counts_i / sel_mask['h_frac']['high_c'][m]
-                    mstar_mean += [np.sum(mstar_h[np.where(ids==i)]) for i in range(1,len(bins))]
-
-                if sel_mask['h_frac']['low_c'][m]!=0:
-                    ids = np.digitize(mstar_l, bins)
-                    counts_i = [np.sum( np.ones(len(mstar_l))[np.where(ids==i)]) for i in range(1,len(bins))]
-                    counts += counts_i
-                    hist   += counts_i / sel_mask['h_frac']['low_c'][m]
-                    mstar_mean += [np.sum(mstar_l[np.where(ids==i)]) for i in range(1,len(bins))]
+                    if sel_mask['h_frac'][m][v]!=0:
+                        ids = np.digitize(mstar, bins)
+                        counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                        counts += counts_i
+                        hist   += np.array(counts_i) / sel_mask['h_frac'][m][v]
+                        mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
 
             else:
                 if sel_mask['h_frac'][m]!=0:
-                    mstar = self.sim.sub['MassInHalfRadType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
+                    mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
                     ids = np.digitize(mstar, bins)
                     counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
                     counts += counts_i
-                    hist   += counts_i / sel_mask['h_frac'][m]
+                    hist   += np.array(counts_i) / sel_mask['h_frac'][m]
                     mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
 
         bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
@@ -410,3 +399,12 @@ def read_cpu(filename=None, skiprows=[]):
         i = i + 1
 
     return d
+
+
+def dict2d_sum(dict):
+    res_sum = np.zeros(len(dict))
+    for i in range(len(dict)):
+        for j in range(len(dict[i])):
+            res_sum[i] += dict[i][j]
+
+    return res_sum
