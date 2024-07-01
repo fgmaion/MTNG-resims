@@ -76,7 +76,12 @@ class split_halos():
             sel_mask = {}
             
             halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
+            m200b = self.sim.fof['halo_m200b']
+            r200b = self.sim.fof['halo_r200b']
+            G_newton = 4.3009172706e-9 #Mpc/M_sun * (km/s)**2
+            parent_v200 = np.sqrt(G_newton*m200b/r200b)[self.sim.sub['parent_halo']['index'][gal_sel]]
             parent_vmax = halo_vmax[self.sim.sub['fof_index'][gal_sel]]
+            vmax_v200 = parent_vmax / parent_v200
 
             for m in range(mhalo_edges.shape[0]):
                 halo_frac[m] = {}
@@ -84,27 +89,27 @@ class split_halos():
                 mbin_tot[m] = {}
                 sel_mask[m] = {}
  
-                vmax_m = parent_vmax[np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) )]
+                vratio_m = vmax_v200[np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) )]
                 if Nhalos is None or isinstance(Nhalos, int):
-                    vmax_bins = np.linspace(vmax_m.min(), vmax_m.max(), Nhalos+1)
+                    vratio_bins = np.linspace(vratio_m.min(), vratio_m.max(), Nhalos+1)
                 else:
-                    vmax_bins = np.linspace(vmax_m.min(), vmax_m.max(), Nhalos[m]+1)
+                    vratio_bins = np.linspace(vratio_m.min(), vratio_m.max(), Nhalos[m]+1)
 
-                for v in range(len(vmax_bins)-1):
+                for v in range(len(vratio_bins)-1):
                     fof_choice[m][v] = []
 
                     # select galaxies in halos of given mass/concentration
-                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (parent_vmax > vmax_bins[v] ) & (parent_vmax < vmax_bins[v+1] ) )[0]
+                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (vmax_v200 > vratio_bins[v] ) & (vmax_v200 < vratio_bins[v+1] ) )[0]
                     
 
                     v_p = v
                     while len(sel_temp)==0:
-                        if v > (len(vmax_bins)-1)//2:
+                        if v > (len(vratio_bins)-1)//2:
                             v_p -= 1
                         else:
                             v_p+=1
                         # there are no halos in this bin, go back to previous one
-                        sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (parent_vmax > vmax_bins[v_p] ) & (parent_vmax < vmax_bins[v_p+1] ) )[0]
+                        sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (vmax_v200 > vratio_bins[v_p] ) & (vmax_v200 < vratio_bins[v_p+1] ) )[0]
 
                     mask, fof_temp, halo_frac[m][v] = self.sample_halos(Nhalos=1, gal_sel=gal_sel, sel_mask=sel_temp)
                     
