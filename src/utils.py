@@ -240,9 +240,9 @@ class split_halos():
             IA_model = pbm.setup_bias_model(pb.IA_TensorBiasND, terms=IA_terms, spatial_order=2)
 
             q = self.q_pos(self.sim)
-            I = bacco.utils.S_to_I(self.sim.sub['subhalo_stellar_MOI'])
+            S = bacco.utils.I_to_S(self.sim.sub['subhalo_stellar_MOI'])
 
-            bias = pbm.fit_bias(model=IA_model, tracer_q=q, error='qjack4', tracer_properties={'I':I})
+            bias = pbm.fit_bias(model=IA_model, tracer_q=q, error='qjack4', tracer_properties={'I':S})
             bpo = np.float32(IA_model.bpo)
             np.save("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
         
@@ -252,7 +252,7 @@ class split_halos():
 
         return bpo
 
-    def bias_sm(self, gal_sel=None, sel_mask=None, bpo=None, mhalo_edges=None, Nhalos=None, vmax_sel=None, recompute=False):
+    def bias_sm(self, gal_sel=None, sel_mask=None, bpo=None, mhalo_edges=None, Nhalos=None, vmax_sel=None, nbins=100, recompute=False):
         '''
         Function to get the bias of a certain selection sel_mask, binned as a function of stellar masses
         '''
@@ -260,41 +260,36 @@ class split_halos():
         if bpo is None:
             bpo = self.get_bpo(recompute=recompute)
 
-        if sel_mask is None:
-            # subhalos that belong to halos of mass in mass_edges
-            sel_mask = self.subhalo_sel(mhalo_edges=mhalo_edges, vmax_sel=vmax_sel, Nhalos=Nhalos)
-                
-            # # selection of central galaxies
-            # sel_mask = sel_mask[np.where(self.sim.sub['central'][sel_mask])]
+        bins       = np.logspace(8, 13, nbins)
+        counts     = np.zeros(nbins-1)
+        hist       = np.zeros(nbins-1)
+        mstar_mean = np.zeros(nbins-1)
 
-        sel_comb = []
+        bias = np.zeros((nbins-1, 3))
+
         for m in range(len(sel_mask['sel'])):
-            sel_comb.extend(sel_mask['sel'][m])
-        sel_comb = np.array(sel_comb)
+            if vmax_sel is True:
+                for v in range(len(sel_mask['sel'][m])):
+                    mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m][v]] * 1e10 / self.sim.Cosmology.pars['hubble']
 
-        # stellar mass of final selected subhalos
-        mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_comb] * 1e10
+                    if sel_mask['h_frac'][m][v]!=0:
+                        ids = np.digitize(mstar, bins)
+                        counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                        counts += counts_i
+                        bias += [np.sum( bpo[sel_mask['sel'][m][v]][np.where(ids==i)], axis=0) for i in range(1,len(bins))]
+                        mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
 
-        # bias per object of final selected subhalos
-        bpo_sel = bpo[sel_comb]
-
-        mstar = np.array(mstar, dtype=np.float)
-        bpo_sel = np.array(bpo_sel)            
-
-        # selection of galaxies per stellar-mass
-        D = 0.5
-        ms_edges = np.arange(9.5,12.5,D)
-        idx = np.digitize(np.log10(mstar), bins=ms_edges)
-        
-        bias = np.zeros((len(ms_edges)-1, 5))
-        for i in range(len(ms_edges)-1):
-            sel_idx = np.where(idx==i+1)[0]
-            if len(sel_idx)!=0:
-                bias[i] = np.mean( bpo_sel[sel_idx], axis=0 )
             else:
-                bias[i] = 0
+                mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
 
-        return  {'bias':bias, 'm_edges':ms_edges}
+                if sel_mask['h_frac'][m]!=0:
+                    ids = np.digitize(mstar, bins)
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                    counts += counts_i
+                    bias += [np.sum( bpo[sel_mask['sel'][m]][np.where(ids==i)], axis=0) for i in range(1,len(bins))]
+                    mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+
+        return  {'bias':bias / counts[:,np.newaxis], 'm_edges':ms_edges}
 
     # def cs_rad_sat(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
         
@@ -312,18 +307,30 @@ class split_halos():
     #     return  {'smf':hist, 'mh_tot':mhalos_tot, 'Nh':nhalos, 'h_idx':fof_choice}
 
     def gas_frac(self, m500_edges=None, sel_mask=None, vmax_sel=False):
+        '''
+        '''
 
         if vmax_sel is True:
-            m500c = np.log10(1e10*np.hstack( (self.sim.fof['halo_m500c'][sel_mask['h_idx']['high_c']], self.sim.fof['halo_m500c'][sel_mask['h_idx']['low_c']]) ))
-            mgas = np.hstack( (self.sim.fof['halo_mfof_type'][:,0][sel_mask['h_idx']['high_c']], self.sim.fof['halo_mfof_type'][:,0][sel_mask['h_idx']['low_c']]) )
-            mfof = np.hstack( (self.sim.fof['halo_mfof'][sel_mask['h_idx']['high_c']], self.sim.fof['halo_mfof'][sel_mask['h_idx']['low_c']]) )
-            mstel = np.hstack( (self.sim.fof['halo_mfof_type'][:,4][sel_mask['h_idx']['high_c']], self.sim.fof['halo_mfof_type'][:,4][sel_mask['h_idx']['low_c']]) )
-        else:
-            m500c = np.log10(1e10*self.sim.fof['halo_m500c'][sel_mask['h_idx']])
-            mgas = self.sim.fof['halo_mfof_type'][:,0][sel_mask['h_idx']]
-            mfof = self.sim.fof['halo_mfof'][sel_mask['h_idx']]
-            mstel = self.sim.fof['halo_mfof_type'][:,4][sel_mask['h_idx']]
+            # Get the indices of the selected halos
+            fof_idx = []
+            for m in range(len(sel_mask['h_idx'])):
+                for v in range(len(sel_mask['h_idx'][m])):
+                    fof_idx.extend(sel_mask['h_idx'][m][v])
+            
+            fof_idx = np.unique(fof_idx)
 
+            m500c = np.log10( 1e10 * self.sim.fof['halo_m500c'][fof_idx] )
+            mgas = self.sim.fof['halo_mfof_type'][:,0][fof_idx]
+            mfof = self.sim.fof['halo_mfof'][fof_idx]
+            mstel = self.sim.fof['halo_mfof_type'][:,4][fof_idx]
+        else:
+            # Get the indices of the selected halos
+            fof_idx = np.unique(sel_mask['h_idx'])
+
+            m500c = np.log10( 1e10 * self.sim.fof['halo_m500c'][fof_idx] )
+            mgas = self.sim.fof['halo_mfof_type'][:,0][fof_idx]
+            mfof = self.sim.fof['halo_mfof'][fof_idx]
+            mstel = self.sim.fof['halo_mfof_type'][:,4][fof_idx]
         
         f_gas = np.zeros(m500_edges.shape[0])
         f_stel = np.zeros(m500_edges.shape[0])
