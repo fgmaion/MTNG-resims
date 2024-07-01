@@ -248,19 +248,20 @@ class split_halos():
         
         else:
             load_bias = np.load("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
-            bpo = load_bias['cs_bpo']
+            bpo = load_bias['bpo']
 
         return bpo
 
-    def bias_sm(self, gal_sel=None, sel_mask=None, bpo=None, mhalo_edges=None, Nhalos=None, vmax_sel=None, nbins=100, recompute=False):
+    def bias_sm(self, gal_sel=None, sel_mask=None, bpo=None, mhalo_edges=None, Nhalos=None, vmax_sel=None, bins=None, recompute=False):
         '''
         Function to get the bias of a certain selection sel_mask, binned as a function of stellar masses
         '''
         
         if bpo is None:
-            bpo = self.get_bpo(recompute=recompute)
+            bpo = self.get_bpo(recompute=recompute)[gal_sel]
 
-        bins       = np.logspace(8, 13, nbins)
+        nbins      = len(bins)
+
         counts     = np.zeros(nbins-1)
         hist       = np.zeros(nbins-1)
         mstar_mean = np.zeros(nbins-1)
@@ -274,22 +275,22 @@ class split_halos():
 
                     if sel_mask['h_frac'][m][v]!=0:
                         ids = np.digitize(mstar, bins)
-                        counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                        counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))] / sel_mask['h_frac'][m][v]
                         counts += counts_i
-                        bias += [np.sum( bpo[sel_mask['sel'][m][v]][np.where(ids==i)], axis=0) for i in range(1,len(bins))]
-                        mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+                        bias += [np.sum( bpo[sel_mask['sel'][m][v]][np.where(ids==i)], axis=0) for i in range(1,len(bins))] / sel_mask['h_frac'][m][v]
+                        mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))] / sel_mask['h_frac'][m][v]
 
             else:
                 mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
 
                 if sel_mask['h_frac'][m]!=0:
                     ids = np.digitize(mstar, bins)
-                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))] / sel_mask['h_frac'][m]
                     counts += counts_i
-                    bias += [np.sum( bpo[sel_mask['sel'][m]][np.where(ids==i)], axis=0) for i in range(1,len(bins))]
-                    mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+                    bias += [np.sum( bpo[sel_mask['sel'][m]][np.where(ids==i)], axis=0) for i in range(1,len(bins))] / sel_mask['h_frac'][m]
+                    mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))] / sel_mask['h_frac'][m]
 
-        return  {'bias':bias / counts[:,np.newaxis], 'm_edges':ms_edges}
+        return  {'bias':bias / counts[:,np.newaxis], 'mstar':mstar_mean / counts}
 
     # def cs_rad_sat(self, bpo=None, mass_edges=[12.5,13], nbins=100, Nhalos=None, vmax_sel=None, recompute=False):
         
