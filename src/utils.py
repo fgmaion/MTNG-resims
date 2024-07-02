@@ -58,7 +58,11 @@ class split_halos():
         Whether to split the selection not only by mass, but by concentration as well
         '''
         # Typical galaxy selection. May have to change particle limit
-        gal_sel = np.where( (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+        if DM_only is False:
+            gal_sel = np.where( (self.sim.sub['LenType'][:,4]>200) & (np.sum(self.sim.sub['MassType'], axis=1)>1) )[0]
+        else:
+            m200b = self.sim.fof['halo_m200b']
+            gal_sel = np.where( (self.sim.sub['len']>0) & (m200b[self.sim.sub['parent_halo']['index']] > 0) )[0]
         
         # Get the galaxy parent-halo masses
         parent_mass = self.sim.sub['parent_halo']['mfof'][gal_sel] * 1e10
@@ -134,7 +138,7 @@ class split_halos():
                 if DM_only is False:
                     sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass <10**mhalo_edges[m,1]) )[0]
                 else:
-                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) & (self.sim.sub['len']>200) )[0]
+                    sel_temp = np.where( (parent_mass>10**mhalo_edges[m,0]) & (parent_mass<10**mhalo_edges[m,1]) )[0]
 
                 # sample those halos randomly
                 if Nhalos is None or isinstance(Nhalos, int):
