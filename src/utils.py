@@ -415,3 +415,53 @@ def dict2d_sum(dict):
             res_sum[i] += dict[i][j]
 
     return res_sum
+
+def camels_stellar_mf(id_name, par, nbins=100, boxsize=25, hfac=0.6711):
+    '''
+        Function to compute stellar mass function from the chosen population of halos
+
+        Object:sim
+        This is a bacco.simulation object, representing a simulation from which we will load all the information
+
+        array of floats:mass_edges
+        Edges of the halo mass-bin over which we will compute the stellar mass-function
+
+        int:nbins
+        Number of bins over which to build the histogram
+
+        int:Nhalos
+        Number of halos that we wish to sample at this mass-bin
+
+        Bool:vmax_sel
+        Whether to split by concentration besides the mass selection
+    '''
+    
+    # catalog name
+    catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+
+    # value of the scale factor
+    scale_factor = 1.0
+
+    # open the catalogue
+    f = h5py.File(catalog, 'r')
+
+    # read the positions, black hole masses and stellar masses of the subhalos/galaxies
+    mstar = f['Subhalo/SubhaloMassType'][:,4]*1e10 #stellar masses in Msun/h
+
+    # close file
+    f.close()
+    
+    bins = np.logspace(8, 13, nbins)
+    counts     = np.zeros(nbins-1)
+    mstar_mean = np.zeros(nbins-1)
+
+    ids = np.digitize(mstar, bins)
+    counts = np.array([np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))])
+    mstar_mean = np.array([np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))])
+
+    bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+    norm = 1 / ( ( boxsize / hfac )**3 * bin_width )
+
+    return  {'smf':norm * counts, 'bins':bins, 'mstar':mstar_mean / counts}
+
+
