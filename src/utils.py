@@ -24,6 +24,78 @@ class split_halos():
 
         return q
 
+    def halo_sel(self, mhalo_edges=None, Nhalos=None, vmax_sel=False):
+        '''
+        Function to select subhalos belonging to the Nhalos sampled halos in mass range delimited by mhalo_edges.
+
+        array of floats:mass_edges
+        Contains the edges of the mass-bin in which we wish to select our halo
+
+        bool:vmax_sel
+        Whether to split the selection not only by mass, but by concentration as well
+        '''
+        # Typical galaxy selection. May have to change particle limit
+        m200b = 1e10 * self.sim.fof['halo_m200b']
+        
+        # Total Mass
+        mhalos_tot = 0
+        nhalos = 0
+
+        if vmax_sel is True:
+            fof_choice = {}
+            halo_frac = {}
+            
+            halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
+            m200b = 1e10 * self.sim.fof['halo_m200b']
+            r200b = self.sim.fof['halo_r200b']
+            G_newton = 4.3009172706e-9 #Mpc/M_sun * (km/s)**2
+            halo_v200 = np.sqrt(G_newton*m200b/r200b)
+            vmax_v200 = halo_vmax / halo_v200
+
+            for m in range(mhalo_edges.shape[0]):
+                fof_choice[m] = []
+                halo_frac[m] = []
+
+                vratio_m = vmax_v200[np.where( (m200b>10**mhalo_edges[m,0]) & (m200b<10**mhalo_edges[m,1]) )]
+                vratio_bins = np.linspace(vratio_m.min(), vratio_m.max(), Nhalos+1)
+
+                for v in range(Nhalos):
+                    # select galaxies in halos of given mass/concentration
+                    sel_temp = np.where( (m200b>10**mhalo_edges[m,0]) & (m200b<10**mhalo_edges[m,1]) & (vmax_v200 > vratio_bins[v] ) & (vmax_v200 < vratio_bins[v+1] ) )[0]
+                    
+                    if len(sel_temp)==0:
+                        continue
+
+                    fof_temp = np.random.choice(sel_temp, 1, replace=False)
+                    
+                    fof_choice[m].append(fof_temp[0])
+                    halo_frac[m].append(1 / len(sel_temp))
+
+        else:
+            fof_choice = []
+            halo_frac = []
+            mbin_tot = np.zeros(mhalo_edges.shape[0])
+            
+            for m in range(mhalo_edges.shape[0]):
+                # select halos in mass-bin
+                sel_temp = np.where( (m200b>10**mhalo_edges[m,0]) & (m200b <10**mhalo_edges[m,1]) )[0]
+
+                if Nhalos is not None:
+                    # sample those halos randomly
+                    fof_temp = np.random.choice(sel_temp, Nhalos, replace=False)
+                    fof_choice.extend(fof_temp)
+
+                    halo_frac.append( Nhalos / len(sel_temp))
+                else:
+                    fof_temp=sel_temp
+                    fof_choice.extend(fof_temp)
+
+                    halo_frac.append(1)
+
+            fof_choice = np.array(fof_choice)
+
+        return {'sel':fof_choice, 'h_frac':halo_frac}
+
     def sample_halos(self, Nhalos=None, gal_sel=None, sel_mask=None):
         '''
             int:Nhalos
@@ -198,6 +270,59 @@ class split_halos():
             else:
                 if sel_mask['h_frac'][m]!=0:
                     mstar = self.sim.sub['MassType'][:,4][gal_sel][sel_mask['sel'][m]] * 1e10 / self.sim.Cosmology.pars['hubble']
+                    ids = np.digitize(mstar, bins)
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                    counts += counts_i
+                    hist   += np.array(counts_i) / sel_mask['h_frac'][m]
+                    mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+
+        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+        norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
+
+        return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / counts}
+
+    def halo_smf(self, sel_mask=None, mhalo_edges=None, nbins=100, Nhalos=None, vmax_sel=None):
+        '''
+            Function to compute stellar mass function from the chosen population of halos
+
+            Object:sim
+            This is a bacco.simulation object, representing a simulation from which we will load all the information
+
+            array of floats:mass_edges
+            Edges of the halo mass-bin over which we will compute the stellar mass-function
+
+            int:nbins
+            Number of bins over which to build the histogram
+
+            int:Nhalos
+            Number of halos that we wish to sample at this mass-bin
+
+            Bool:vmax_sel
+            Whether to split by concentration besides the mass selection
+        '''
+        
+        bins = np.logspace(8, 13, nbins)
+        counts     = np.zeros(nbins-1)
+        hist       = np.zeros(nbins-1)
+        mstar_mean = np.zeros(nbins-1)
+
+        for m in range(len(sel_mask['sel'])):
+            if vmax_sel is True:
+                for v in range(len(sel_mask['sel'][m])):
+                    gal_sel = np.where(self.sim.sub['parent_halo']['index']==sel_mask['sel'][m][v])
+                    mstar = self.sim.sub['MassType'][:,4][gal_sel] * 1e10 / self.sim.Cosmology.pars['hubble']
+
+                    if sel_mask['h_frac'][m][v]!=0:
+                        ids = np.digitize(mstar, bins)
+                        counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                        counts += counts_i
+                        hist   += np.array(counts_i) / sel_mask['h_frac'][m][v]
+                        mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+
+            else:
+                if sel_mask['h_frac'][m]!=0:
+                    gal_sel = np.where(self.sim.sub['parent_halo']['index']==sel_mask['sel'][m])
+                    mstar = self.sim.sub['MassType'][:,4][gal_sel] * 1e10 / self.sim.Cosmology.pars['hubble']
                     ids = np.digitize(mstar, bins)
                     counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
                     counts += counts_i
