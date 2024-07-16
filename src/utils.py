@@ -410,7 +410,7 @@ def camels_stellar_mf(id_name, par, nbins=100, boxsize=25, hfac=0.6711):
     f = h5py.File(catalog, 'r')
 
     # read the positions, black hole masses and stellar masses of the subhalos/galaxies
-    mstar = f['Subhalo/SubhaloMassType'][:,4]*1e10 / hfac #stellar masses in Msun/h
+    mstar = f['Subhalo/SubhaloMassType'][:,4]*1e10 / hfac #stellar masses in Msun
 
     # close file
     f.close()
@@ -428,7 +428,7 @@ def camels_stellar_mf(id_name, par, nbins=100, boxsize=25, hfac=0.6711):
 
     return  {'smf':norm * counts, 'bins':bins, 'mstar':mstar_mean / counts}
 
-def camels_gas_frac(id_name, par, nbins=20):
+def camels_gas_frac(id_name, par, nbins=20, hfac=0.6711):
     '''
     '''
 
@@ -442,10 +442,10 @@ def camels_gas_frac(id_name, par, nbins=20):
     f = h5py.File(catalog, 'r')
 
     # read the positions, black hole masses and stellar masses of the subhalos/galaxies
-    m500c = f['Group/Group_M_Crit500'][()]*1e10  #M500c in log10 of Msun/h
+    m500c = f['Group/Group_M_Crit500'][()]*1e10 / hfac  #M500c in log10 of Msun
     main_sub = f['Group/GroupFirstSub'][()]
-    mgas = ( f['Subhalo/SubhaloMassType'][:,0]*1e10 )[main_sub] #M500c in log10 of Msun/h
-    mtot = ( f['Subhalo/SubhaloMass'][()]*1e10 )[main_sub]
+    mgas = ( f['Subhalo/SubhaloMassType'][:,0]*1e10 )[main_sub] #Mgas in log10 of Msun/h
+    mtot = ( f['Subhalo/SubhaloMass'][()]*1e10 )[main_sub] #total mass in log10 of Msun/h
 
     # close file
     f.close()
