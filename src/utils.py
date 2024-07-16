@@ -336,6 +336,10 @@ class split_halos():
         hist       = np.zeros(nbins-1)
         mstar_mean = np.zeros(nbins-1)
 
+        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
+        first = self.sim.fof['halo_firstsub'][presel]
+        nsubs = self.sim.fof['halo_nsubs'][presel]
+
         for m in range(len(sel_mask['sel'])):
             if vmax_sel is True:
                 for v in range(len(sel_mask['sel'][m])):
@@ -350,11 +354,10 @@ class split_halos():
                         mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
 
             else:
-                print(m)
                 if sel_mask['h_frac'][m]!=0:
                     mstar = []
                     for i in range(len(sel_mask['sel'][m])):
-                        mstar.extend(self.sim.sub['MassType'][:,4][self.sim.fof['halo_firstsub'][sel_mask['sel'][m][i]]:self.sim.fof['halo_firstsub'][sel_mask['sel'][m][i]]+self.sim.fof['halo_nsubs'][sel_mask['sel'][m][i]]])
+                        mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][i]]:first[sel_mask['sel'][m][i]]+nsubs[sel_mask['sel'][m][i]]] / self.sim.Cosmology.pars['hubble'])
                     
                     mstar = 1e10 * np.array(mstar)
 
