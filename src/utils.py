@@ -82,27 +82,29 @@ class split_halos():
                     halo_frac[m].append(1 / len(sel_temp))
 
         else:
-            fof_choice = []
+            fof_choice = {}
             halo_frac = []
             mbin_tot = np.zeros(mhalo_edges.shape[0])
             
             for m in range(mhalo_edges.shape[0]):
+                fof_choice[m] = []
+
                 # select halos in mass-bin
                 sel_temp = np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b <10**mhalo_edges[m,1]) )[0]
 
                 if Nhalos is not None:
                     # sample those halos randomly
-                    fof_temp = np.random.choice(sel_temp, Nhalos, replace=False)
-                    fof_choice.extend(fof_temp)
+                    fof_temp = np.random.choice(sel_temp, min(Nhalos, len(sel_temp)), replace=False)
+                    fof_choice[m].extend(fof_temp)
 
-                    halo_frac.append( Nhalos / len(sel_temp))
+                    halo_frac.append( min(Nhalos, len(sel_temp)) / len(sel_temp))
                 else:
                     fof_temp=sel_temp
-                    fof_choice.extend(fof_temp)
+                    fof_choice[m].extend(fof_temp)
 
                     halo_frac = np.ones(len(fof_temp))
 
-            fof_choice = np.array(fof_choice)
+                fof_choice[m] = np.array(fof_choice[m])
 
         return {'sel':fof_choice, 'h_frac':halo_frac}
 
@@ -237,6 +239,24 @@ class split_halos():
 
         return {'sel':sel_mask, 'h_idx':fof_choice, 'mh_tot':mhalos_tot, 'mh_bin':mbin_tot, 'Nh':nhalos, 'h_frac':halo_frac, 'gal_sel':gal_sel}
 
+    def total_smf(self, nbins=100):
+
+        bins = np.logspace(8, 13, nbins)
+        counts     = np.zeros(nbins-1)
+        hist       = np.zeros(nbins-1)
+        mstar_mean = np.zeros(nbins-1)
+
+        mstar = self.sim.sub['MassType'][:,4] * 1e10 / self.sim.Cosmology.pars['hubble']
+        ids = np.digitize(mstar, bins)
+
+        hist = np.array( [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))] )
+        mstar_mean = np.array([np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))])
+
+        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+        norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
+
+        return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / hist}
+
     def stellar_mf(self, gal_sel=None, sel_mask=None, mhalo_edges=None, nbins=100, Nhalos=None, vmax_sel=None):
         '''
             Function to compute stellar mass function from the chosen population of halos
@@ -330,14 +350,20 @@ class split_halos():
                         mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
 
             else:
+                print(m)
                 if sel_mask['h_frac'][m]!=0:
-                    gal_sel = np.where(self.sim.sub['parent_halo']['index']==sel_mask['sel'][m])
-                    mstar = self.sim.sub['MassType'][:,4][gal_sel] * 1e10 / self.sim.Cosmology.pars['hubble']
+                    mstar = []
+                    for i in range(len(sel_mask['sel'][m])):
+                        mstar.extend(self.sim.sub['MassType'][:,4][self.sim.fof['halo_firstsub'][sel_mask['sel'][m][i]]:self.sim.fof['halo_firstsub'][sel_mask['sel'][m][i]]+self.sim.fof['halo_nsubs'][sel_mask['sel'][m][i]]])
+                    
+                    mstar = 1e10 * np.array(mstar)
+
                     ids = np.digitize(mstar, bins)
-                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]
+
                     counts += counts_i
                     hist   += np.array(counts_i) / sel_mask['h_frac'][m]
-                    mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+                    mstar_mean += [np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]
 
         bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
         norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
