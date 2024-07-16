@@ -7,6 +7,21 @@ class split_halos():
     def __init__(self, sim):
         self.sim = sim
 
+    def halo_sel_setup(self,):
+        '''
+            Get the quantitities which are necessary for runnig the halo_sel function.
+        '''
+
+        self.m200b = 1e10 * self.sim.fof['halo_m200b']
+        self.halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
+        self.r200b = self.sim.fof['halo_r200b']
+
+        G_newton = 4.3009172706e-9 #Mpc/M_sun * (km/s)**2
+
+        self.halo_v200 = np.sqrt(G_newton*self.m200b/self.r200b)
+        self.vmax_v200 = self.halo_vmax / self.halo_v200
+
+
     def q_pos(self, sim, npart=4320, BoxSize=500, corr_fac=125):
         
         gal_mbid = sim.sub['IDMostbound']
@@ -26,7 +41,7 @@ class split_halos():
 
     def halo_sel(self, mhalo_edges=None, Nhalos=None, vmax_sel=False):
         '''
-        Function to select subhalos belonging to the Nhalos sampled halos in mass range delimited by mhalo_edges.
+        Function to sample halos in mass-bins
 
         array of floats:mass_edges
         Contains the edges of the mass-bin in which we wish to select our halo
@@ -35,33 +50,28 @@ class split_halos():
         Whether to split the selection not only by mass, but by concentration as well
         '''
         # Typical galaxy selection. May have to change particle limit
-        m200b = 1e10 * self.sim.fof['halo_m200b']
         
         # Total Mass
         mhalos_tot = 0
         nhalos = 0
+        
+        _m200b = self.m200b[np.where(self.m200b>10**mhalo_edges[0,0])]
+        _vmax_v200 = self.vmax_v200[np.where(self.m200b>10**mhalo_edges[0,0])]
 
         if vmax_sel is True:
             fof_choice = {}
             halo_frac = {}
             
-            halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
-            m200b = 1e10 * self.sim.fof['halo_m200b']
-            r200b = self.sim.fof['halo_r200b']
-            G_newton = 4.3009172706e-9 #Mpc/M_sun * (km/s)**2
-            halo_v200 = np.sqrt(G_newton*m200b/r200b)
-            vmax_v200 = halo_vmax / halo_v200
-
             for m in range(mhalo_edges.shape[0]):
                 fof_choice[m] = []
                 halo_frac[m] = []
 
-                vratio_m = vmax_v200[np.where( (m200b>10**mhalo_edges[m,0]) & (m200b<10**mhalo_edges[m,1]) )]
+                vratio_m = _vmax_v200[np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b<10**mhalo_edges[m,1]) )]
                 vratio_bins = np.linspace(vratio_m.min(), vratio_m.max(), Nhalos+1)
 
                 for v in range(Nhalos):
                     # select galaxies in halos of given mass/concentration
-                    sel_temp = np.where( (m200b>10**mhalo_edges[m,0]) & (m200b<10**mhalo_edges[m,1]) & (vmax_v200 > vratio_bins[v] ) & (vmax_v200 < vratio_bins[v+1] ) )[0]
+                    sel_temp = np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b<10**mhalo_edges[m,1]) & (_vmax_v200 > vratio_bins[v] ) & (_vmax_v200 < vratio_bins[v+1] ) )[0]
                     
                     if len(sel_temp)==0:
                         continue
@@ -78,7 +88,7 @@ class split_halos():
             
             for m in range(mhalo_edges.shape[0]):
                 # select halos in mass-bin
-                sel_temp = np.where( (m200b>10**mhalo_edges[m,0]) & (m200b <10**mhalo_edges[m,1]) )[0]
+                sel_temp = np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b <10**mhalo_edges[m,1]) )[0]
 
                 if Nhalos is not None:
                     # sample those halos randomly
@@ -90,7 +100,7 @@ class split_halos():
                     fof_temp=sel_temp
                     fof_choice.extend(fof_temp)
 
-                    halo_frac.append(1)
+                    halo_frac = np.ones(len(fof_temp))
 
             fof_choice = np.array(fof_choice)
 
