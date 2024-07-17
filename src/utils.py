@@ -157,13 +157,16 @@ class split_halos():
 
         for m in range(len(sel_mask['sel'])):
             if vmax_sel is True:
-                for v in range(len(sel_mask['sel'][m])):
-                    gal_sel = np.where(self.sim.sub['parent_halo']['index']==sel_mask['sel'][m][v])
-                    mstar = self.sim.sub['MassType'][:,4][gal_sel] * 1e10 / self.sim.Cosmology.pars['hubble']
+                if sel_mask['h_frac'][m]!=0:
+                    mstar = []
+                    for v in range(len(sel_mask['sel'][m])):
+                        mstar = self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][v]]:first[sel_mask['sel'][m][v]]+nsubs[sel_mask['sel'][m][v]]] / self.sim.Cosmology.pars['hubble']
+                    
+                        mstar = 1e10 * np.array(mstar)
 
-                    if sel_mask['h_frac'][m][v]!=0:
                         ids = np.digitize(mstar, bins)
                         counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
+                        
                         counts += counts_i
                         hist   += np.array(counts_i) / sel_mask['h_frac'][m][v]
                         mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
@@ -270,9 +273,15 @@ class split_halos():
 
         return  {'bias':bias / counts[:,np.newaxis], 'mstar':mstar_mean / counts}
 
-    def gas_frac(self, m500_edges=None, sel_mask=None, vmax_sel=False):
+    def halo_gas_frac(self, mhalo_edges=None, m500_edges=None, sel_mask=None, vmax_sel=False):
         '''
         '''
+
+        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
+        _m500c = self.sim.fof['halo_m500c'][presel]
+        _main_sub = self.sim.fof['halo_firstsub'][presel]
+        _mgas  = self.sim.sub['MassType'][:,0][_main_sub]
+        _mtot =  np.sum(self.sim.sub['MassType'], axis=1)[_main_sub]
 
         if vmax_sel is True:
             # Get the indices of the selected halos
@@ -289,27 +298,18 @@ class split_halos():
             mstel = self.sim.fof['halo_mfof_type'][:,4][fof_idx]
         else:
             # Get the indices of the selected halos
-            fof_idx = np.unique(sel_mask['h_idx'])
 
-            m500c = np.log10( 1e10 * self.sim.fof['halo_m500c'][fof_idx] )
-            mgas = self.sim.fof['halo_mfof_type'][:,0][fof_idx]
-            mfof = self.sim.fof['halo_mfof'][fof_idx]
-            mstel = self.sim.fof['halo_mfof_type'][:,4][fof_idx]
-        
-        f_gas = np.zeros(m500_edges.shape[0])
-        f_stel = np.zeros(m500_edges.shape[0])
-        m500c_mean = np.zeros(m500_edges.shape[0])
+            f_gas = np.zeros(m500_edges.shape[0])
+            m500c_mean = np.zeros(m500_edges.shape[0])
 
-        for m in range(m500_edges.shape[0]):
-            m_sel = np.where((m500c>m500_edges[m,0])&(m500c<m500_edges[m,1]))
+            for m in range(m500_edges.shape[0]):
+                m_sel = np.where((_m500c>m500_edges[m,0])&(_m500c<m500_edges[m,1]))
 
-            f_gas[m] = np.mean( mgas[m_sel] / mfof[m_sel] )
+                f_gas[m] = np.mean( _mgas[m_sel] / _mtot[m_sel] )
 
-            f_stel[m] = np.mean( mstel[m_sel] / mfof[m_sel] )
+                m500c_mean[m]= np.mean( 10**_m500c[m_sel] )
 
-            m500c_mean[m]= np.mean( 10**m500c[m_sel] )
-
-        return {'f_gas':f_gas, 'f_stel':f_stel, 'm500c':m500c_mean}
+        return {'f_gas':f_gas, 'm500c':m500c_mean}
 
 def read_zoom(base=None, filebase="snapshot_ics_000"):
 
