@@ -68,8 +68,8 @@ class split_halos():
             halo_frac = {}
             
             for m in range(mhalo_edges.shape[0]):
-                fof_choice[m] = []
-                halo_frac[m] = []
+                fof_choice[m] = {d:[] for d in range(draws)}
+                halo_frac[m] = {d:[] for d in range(draws)}
 
                 vratio_m = _vmax_v200[np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b<10**mhalo_edges[m,1]) )]
                 vratio_bins = np.linspace(vratio_m.min(), vratio_m.max(), Nhalos+1)
@@ -81,10 +81,11 @@ class split_halos():
                     if len(sel_temp)==0:
                         continue
 
-                    fof_temp = np.random.choice(sel_temp, 1, replace=False)
-                    
-                    fof_choice[m].append(fof_temp[0])
-                    halo_frac[m].append(1 / len(sel_temp))
+                    for d in range(draws):
+                        fof_temp = np.random.choice(sel_temp, 1, replace=False)
+                        
+                        fof_choice[m][d].append(fof_temp[0])
+                        halo_frac[m][d].append(1 / len(sel_temp))
 
         else:
             fof_choice = {}
@@ -172,19 +173,19 @@ class split_halos():
         for m in range(len(sel_mask['sel'])):
             for d in range(draws):
                 if vmax_sel is True:
-                    if sel_mask['h_frac'][m]!=0:
+                    if sel_mask['h_frac'][m][d]!=0:
                         mstar = []
-                        for v in range(len(sel_mask['sel'][m])):
-                            mstar = self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][v]]:first[sel_mask['sel'][m][v]]+nsubs[sel_mask['sel'][m][v]]] / self.sim.Cosmology.pars['hubble']
+                        for v in range(len(sel_mask['sel'][m][d])):
+                            mstar = self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][v]]:first[sel_mask['sel'][m][d][v]]+nsubs[sel_mask['sel'][m][d][v]]] / self.sim.Cosmology.pars['hubble']
                         
                             mstar = 1e10 * np.array(mstar)
 
                             ids = np.digitize(mstar, bins)
                             counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
                             
-                            counts += counts_i
-                            hist   += np.array(counts_i) / sel_mask['h_frac'][m][v]
-                            mstar_mean += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+                            counts[d] += counts_i
+                            hist[d]   += np.array(counts_i) / sel_mask['h_frac'][m][d][v]
+                            mstar_mean[d] += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
 
                 else:
                     if sel_mask['h_frac'][d][m]!=0:
