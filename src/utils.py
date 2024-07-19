@@ -275,6 +275,88 @@ class split_halos():
 
         return {'f_gas':fgas, 'm500c':m500c_mean, 'counts':counts}
 
+    def halo_SFR(self, mhalo_edges=None, sel_mask=None, vmax_sel=False, draws=1, nbins=100):
+        '''
+        '''
+
+        bins = np.logspace(8, 13, nbins)
+
+        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
+        first = self.sim.fof['halo_firstsub'][presel]
+        nsubs = self.sim.fof['halo_nsubs'][presel]
+        
+        counts     = {d:np.zeros(nbins-1) for d in range(draws)}
+        weights    = {d:np.zeros(nbins-1) for d in range(draws)}
+        sSFR_mean   = {d:np.zeros(nbins-1) for d in range(draws)}
+        mstar_mean = {d:np.zeros(nbins-1) for d in range(draws)}
+
+        if vmax_sel is True:
+            for d in range(draws):
+                for m in range(len(sel_mask['sel'])):
+                    if sel_mask['h_frac'][m][d]!=0:
+                        for v in range(len(sel_mask['sel'][m][d])):
+                            mstar = self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][v]]:first[sel_mask['sel'][m][d][v]]+nsubs[sel_mask['sel'][m][d][v]]]
+                            sSFR = self.sim.sub['SFR'][first[sel_mask['sel'][m][d][v]]:first[sel_mask['sel'][m][d][v]]+nsubs[sel_mask['sel'][m][d][v]]]
+
+                            mstar = 1e10 * np.array(mstar)
+                            sSFR  = 1e10 * np.array(sSFR) / mstar
+
+                            ids = np.digitize(mstar, bins)
+                            counts_i = np.array([np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))] )
+                            counts[d] += counts_i
+                            weights[d] += counts_i / sel_mask['h_frac'][m][d][v]
+
+                            sSFR_mean[d] += np.array([np.sum(sSFR[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][m][d][v]
+                            mstar_mean[d] += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))])
+
+        else:
+            for d in range(draws):
+                for m in range(len(sel_mask['sel'])):
+                    if sel_mask['h_frac'][d][m]!=0:
+
+                        mstar = []
+                        sSFR  = []
+                        for i in range(len(sel_mask['sel'][m][d])):
+                            mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]])
+                            sSFR.extend(self.sim.sub['SFR'][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]])
+
+                        mstar = 1e10 * np.array(mstar)
+                        sSFR  = 1e10 * np.array(sSFR) / mstar
+
+                        ids = np.digitize(mstar, bins)
+
+                        counts_i = np.array([np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))])
+                        weights[d] += counts_i / sel_mask['h_frac'][d][m] 
+                        counts[d]  += counts_i
+
+                        sSFR_mean[d] += np.array([np.sum(sSFR[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][d][m] 
+                        mstar_mean[d] += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))])
+
+        for d in range(draws):
+            sSFR_mean[d] /= weights[d]
+            mstar_mean[d] /= counts[d]
+
+        return {'sSFR':sSFR_mean, 'mstar':mstar_mean, 'counts':counts}
+
+    def total_SFR(self, nbins=100):
+        '''
+        '''
+
+        bins = np.logspace(8, 13, nbins)
+
+        mstar = np.array(1e10 * self.sim.sub['MassType'][:,4])
+        sSFR   = np.array(1e10 * self.sim.sub['SFR']) / mstar
+
+        ids = np.digitize(mstar, bins)
+
+        counts = np.array([np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))])
+
+        sSFR_mean = np.array([np.sum(sSFR[np.where(ids==j)]) for j in range(1,len(bins))]) / counts 
+        mstar_mean = np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]) / counts
+
+        return {'sSFR':sSFR_mean, 'mstar':mstar_mean, 'counts':counts}
+
+
     def get_bpo(
             self, recompute=False, IA_terms=("J2=2", "J222=", "J2-2-2-")
             ):
