@@ -72,7 +72,8 @@ class split_halos():
                 halo_frac[m] = {d:[] for d in range(draws)}
 
                 vratio_m = _vmax_v200[np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b<10**mhalo_edges[m,1]) )]
-                vratio_bins = np.linspace(vratio_m.min(), vratio_m.max(), Nhalos+1)
+                spacing = ( len(vratio_m) - 1 ) // Nhalos
+                vratio_bins = np.sort(vratio_m)[np.array([i*spacing for i in range(Nhalos+1)])]
 
                 for v in range(Nhalos):
                     # select galaxies in halos of given mass/concentration
@@ -95,13 +96,13 @@ class split_halos():
             print(time.time()-t0)
             
             for m in range(mhalo_edges.shape[0]):
-                fof_choice[m] = {d:[] for d in range(draws)}
-
                 # Filter halos in the current mass bin
                 in_mass_bin = (_m200b > 10**mhalo_edges[m, 0]) & (_m200b < 10**mhalo_edges[m, 1])
                 sel_temp = np.where(in_mass_bin)[0]
 
                 if Nhalos is not None:
+                    fof_choice[m] = {d:[] for d in range(draws)}
+
                     for d in range(draws):
                         # sample those halos randomly
                         fof_temp = np.random.choice(sel_temp, min(Nhalos, len(sel_temp)), replace=False)
@@ -113,7 +114,7 @@ class split_halos():
 
                 else:
                     fof_temp=sel_temp
-                    fof_choice[m].extend(fof_temp)
+                    fof_choice[m] = fof_temp
 
                     halo_frac = np.ones(len(fof_temp))
 
@@ -529,7 +530,7 @@ def dict2d_sum(dict):
 
     return res_sum
 
-def camels_stellar_mf(id_name, par, nbins=100, boxsize=25, hfac=0.6711):
+def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, boxsize=25, hfac=0.6711):
     '''
         Function to compute stellar mass function from the chosen population of halos
 
@@ -549,8 +550,18 @@ def camels_stellar_mf(id_name, par, nbins=100, boxsize=25, hfac=0.6711):
         Whether to split by concentration besides the mass selection
     '''
     
-    # catalog name
-    catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+    if sim_cat == "1P":
+        assert id_name is not None
+        assert par is not None
+
+        # catalog name
+        catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+    
+    elif sim_cat == 'LH':
+        assert num is not None
+
+        # catalog name
+        catalog = '/scratch/fgmaion/CAMELS/LH/LH_{:d}'.format(num)+'/groups_090.hdf5'
 
     # value of the scale factor
     scale_factor = 1.0
