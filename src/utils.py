@@ -530,7 +530,7 @@ def dict2d_sum(dict):
 
     return res_sum
 
-def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, boxsize=25, hfac=0.6711):
+def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, baseline=False, boxsize=25, hfac=0.6711):
     '''
         Function to compute stellar mass function from the chosen population of halos
 
@@ -551,11 +551,15 @@ def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, boxs
     '''
     
     if sim_cat == "1P":
-        assert id_name is not None
-        assert par is not None
 
         # catalog name
-        catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+        if baseline:
+            catalog = '/scratch/fgmaion/CAMELS/1P/1P_0/groups_090.hdf5'
+        else:
+            assert id_name is not None
+            assert par is not None
+
+            catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
     
     elif sim_cat == 'LH':
         assert num is not None
@@ -624,3 +628,20 @@ def camels_gas_frac(id_name, par, nbins=20, hfac=0.6711):
         m500c_mean[m]= np.mean( m500c[m_sel][sel] )
 
     return {'f_gas':f_gas, 'm500c':m500c_mean}
+
+def camels_get_LH_pars(num=None):
+    # catalog name
+    catalog = '/scratch/fgmaion/CAMELS/LH/LH_{:d}/groups_090.hdf5'.format(num)
+
+    # open the catalogue
+    f = h5py.File(catalog, 'r')
+
+    par1 = f['Parameters'].attrs['WindEnergyIn1e51erg']
+    par2 = f['Parameters'].attrs['VariableWindVelFactor']
+    par3 = f['Parameters'].attrs['RadioFeedbackFactor']
+    par4 = f['Parameters'].attrs['RadioFeedbackReiorientationFactor']
+    
+    # close file
+    f.close()
+
+    return np.asarray([par1, par2, par3, par4])
