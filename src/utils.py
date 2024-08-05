@@ -567,6 +567,13 @@ def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, base
         # catalog name
         catalog = '/scratch/fgmaion/CAMELS/LH/LH_{:d}'.format(num)+'/groups_090.hdf5'
 
+    elif sim_cat == 'CV':
+        assert num is not None
+
+        # catalog name
+        catalog = '/scratch/fgmaion/CAMELS/CV/CV_{:d}'.format(num)+'/groups_090.hdf5'
+
+
     # value of the scale factor
     scale_factor = 1.0
 
