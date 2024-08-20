@@ -12,8 +12,8 @@ SnapFormat                3
 
 
 %---- CPU-time limits
-TimeLimitCPU              98000   % in seconds
-CpuTimeBetRestartFile     5000 % in seconds
+TimeLimitCPU              259200 % in seconds
+CpuTimeBetRestartFile     43200   % in seconds
 FlushCpuTimeDiff          30
 
 %----- Memory alloction
@@ -111,25 +111,27 @@ GravityConstantInternal               0
 %---- Gravitational softening lengths
 SofteningComovingType0    0.0025    
 SofteningComovingType1    0.0025 
-SofteningComovingType2    0  
-SofteningComovingType3    0
-SofteningComovingType4    0.0025
+SofteningComovingType2    0.010  
+SofteningComovingType3    0.020
+SofteningComovingType4    0.040
+SofteningComovingType5    0.080
 
 
 SofteningMaxPhysType0     0.0025 
 SofteningMaxPhysType1     0.0025
-SofteningMaxPhysType2     0
-SofteningMaxPhysType3     0
-SofteningMaxPhysType4     0.0025
+SofteningMaxPhysType2     0.005
+SofteningMaxPhysType3     0.010
+SofteningMaxPhysType4     0.020
+SofteningMaxPhysType5     0.040
 
 GasSoftFactor             2.5 
 
 SofteningTypeOfPartType0        0
 SofteningTypeOfPartType1        1
-SofteningTypeOfPartType2        1
-SofteningTypeOfPartType3        1
-SofteningTypeOfPartType4        1
-SofteningTypeOfPartType5        1  
+SofteningTypeOfPartType2        2
+SofteningTypeOfPartType3        3
+SofteningTypeOfPartType4        4
+SofteningTypeOfPartType5        5  
 
 
 MinimumComovingHydroSoftening   0.00025
