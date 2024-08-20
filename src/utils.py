@@ -636,6 +636,39 @@ def camels_gas_frac(id_name, par, nbins=20, hfac=0.6711):
 
     return {'f_gas':f_gas, 'm500c':m500c_mean}
 
+def camels_sSFR(id_name, par, nbins=20, hfac=0.6711):
+
+    bins = np.logspace(8, 13, nbins)
+    
+    catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+
+    # value of the scale factor
+    scale_factor = 1.0
+
+    # open the catalogue
+    f = h5py.File(catalog, 'r')
+
+    # read the positions, black hole masses and stellar masses of the subhalos/galaxies
+    _mstar = 1e10 * f['Subhalo/SubhaloMassType'][:,4] / hfac #stellar masses in Msun
+    _sSFR = 1e10 * f['Subhalo/SubhaloSFR'][:] / _mstar
+
+    # close file
+    f.close()
+
+    nbins=30
+    bins = np.logspace(8, 13, nbins)
+
+    sSFR = np.zeros(nbins-1)
+    mstar_mean = np.zeros(nbins-1)
+
+    for m in range(nbins-1):
+        m_sel = np.where(( _mstar>bins[m])&( _mstar<bins[m+1]) )
+
+        sSFR[m] = np.mean( _sSFR[m_sel] )
+        mstar_mean[m]= np.mean( _mstar[m_sel] )
+
+    return {'sSFR':sSFR, 'mstar':mstar_mean}
+
 def camels_get_LH_pars(num=None):
     # catalog name
     catalog = '/scratch/fgmaion/CAMELS/LH/LH_{:d}/groups_090.hdf5'.format(num)
