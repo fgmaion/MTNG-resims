@@ -80,18 +80,18 @@ class tree:
             if off+ lenn < nsubs2:
                 with h5py.File("/cosmos_storage/simulations/MTNG/treedata/trees.{:d}.hdf5".format(tree_file[self.treeID[n]][0]), 'r') as f:
                     self.mass[n] = f['TreeHalos']['SubhaloMass'][(off - nsubs1):(off - nsubs1)+lenn]
-                    self.firstprog[n] = f['TreeHalos']['TreeFirstProgenitor'][(off - nsubs1):(off - nsubs1)+lenn]
+                    self.firstprog[n] = f['TreeHalos']['TreeMainProgenitor'][(off - nsubs1):(off - nsubs1)+lenn]
                     self.group_nr[n] = f['TreeHalos']['GroupNr'][(off - nsubs1):(off - nsubs1)+lenn]
             else:
                 print("Tree incomplete")
                 with h5py.File("/cosmos_storage/simulations/MTNG/treedata/trees.{:d}.hdf5".format(tree_file[self.treeID[n]][0]), 'r') as f:
                     main_1 = f['TreeHalos']['SubhaloMass'][(off - nsubs1):]
-                    main_2 = f['TreeHalos']['TreeFirstProgenitor'][(off - nsubs1):]
+                    main_2 = f['TreeHalos']['TreeMainProgenitor'][(off - nsubs1):]
                     main_3 = f['TreeHalos']['GroupNr'][(off - nsubs1):]
 
                 with h5py.File("/cosmos_storage/simulations/MTNG/treedata/trees.{:d}.hdf5".format(tree_file[self.treeID[n]][0]+1), 'r') as f:
                     rest_1 = f['TreeHalos']['SubhaloMass'][:(self.prop_dic[self.treeID[n]]['Offset'] - nsubs2)]
-                    rest_2 = f['TreeHalos']['TreeFirstProgenitor'][:(self.prop_dic[self.treeID[n]]['Offset'] - nsubs2)]
+                    rest_2 = f['TreeHalos']['TreeMainProgenitor'][:(self.prop_dic[self.treeID[n]]['Offset'] - nsubs2)]
                     rest_3 = f['TreeHalos']['GroupNr'][:(self.prop_dic[self.treeID[n]]['Offset'] - nsubs2)]
 
                 self.mass[n] = np.concatenate((main_1, rest_1))
