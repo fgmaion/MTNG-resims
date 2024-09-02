@@ -43,7 +43,7 @@ class split_halos():
         '''
         Function to sample halos in mass-bins
 
-        array of floats:mass_edges
+        array of floats:
         Contains the edges of the mass-bin in which we wish to select our halo
 
         bool:vmax_sel
@@ -142,24 +142,27 @@ class split_halos():
 
         return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / hist}
 
-    def halo_smf(self, sel_mask=None, mhalo_edges=None, nbins=100, Nhalos=None, vmax_sel=None, draws=1):
+    def halo_smf(self, sel_mask=None, nbins=100, draws=1):
         '''
-            Function to compute stellar mass function from the chosen population of halos
-
-            Object:sim
-            This is a bacco.simulation object, representing a simulation from which we will load all the information
-
-            array of floats:mass_edges
-            Edges of the halo mass-bin over which we will compute the stellar mass-function
-
-            int:nbins
-            Number of bins over which to build the histogram
-
-            int:Nhalos
-            Number of halos that we wish to sample at this mass-bin
-
-            Bool:vmax_sel
-            Whether to split by concentration besides the mass selection
+        Function to get the stellar mass function of a selection, binned as a function of halo masses
+        
+        Parameters
+        ----------
+        sel_mask: dict
+            dictionary containing the selection masks
+        mhalo_edges: array
+            array of halo mass edges of the bins
+        nbins: int
+            number of bins in log(mhalo)
+        Nhalos: int or None
+            number of halos to sample per bin
+        draws: int
+            number of selections contained in sel_mask
+        
+        Returns
+        -------
+        dict:
+            dictionary containing the stellar mass function, bin edges and mean stellar mass per halo
         '''
         
         bins = np.logspace(8, 13, nbins)
@@ -167,41 +170,25 @@ class split_halos():
         hist       = {d:np.zeros(nbins-1) for d in range(draws)}
         mstar_mean = {d:np.zeros(nbins-1) for d in range(draws)}
 
-        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
-        first = self.sim.fof['halo_firstsub'][presel]
-        nsubs = self.sim.fof['halo_nsubs'][presel]
+#        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
+        first = self.sim.fof['halo_firstsub']#[presel]
+        nsubs = self.sim.fof['halo_nsubs']#[presel]
 
         for m in range(len(sel_mask['sel'])):
             for d in range(draws):
-                if vmax_sel is True:
-                    if sel_mask['h_frac'][m][d]!=0:
-                        mstar = []
-                        for v in range(len(sel_mask['sel'][m][d])):
-                            mstar = self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][v]]:first[sel_mask['sel'][m][d][v]]+nsubs[sel_mask['sel'][m][d][v]]] / self.sim.Cosmology.pars['hubble']
-                        
-                            mstar = 1e10 * np.array(mstar)
+                if sel_mask['h_frac'][d][m]!=0:
+                    mstar = []
+                    for i in range(len(sel_mask['sel'][m][d])):
+                        mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]] / self.sim.Cosmology.pars['hubble'])
+                    
+                    mstar = 1e10 * np.array(mstar)
 
-                            ids = np.digitize(mstar, bins)
-                            counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))]
-                            
-                            counts[d] += counts_i
-                            hist[d]   += np.array(counts_i) / sel_mask['h_frac'][m][d][v]
-                            mstar_mean[d] += [np.sum(mstar[np.where(ids==i)]) for i in range(1,len(bins))]
+                    ids = np.digitize(mstar, bins)
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]
 
-                else:
-                    if sel_mask['h_frac'][d][m]!=0:
-                        mstar = []
-                        for i in range(len(sel_mask['sel'][m][d])):
-                            mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]] / self.sim.Cosmology.pars['hubble'])
-                        
-                        mstar = 1e10 * np.array(mstar)
-
-                        ids = np.digitize(mstar, bins)
-                        counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]
-
-                        counts[d] += counts_i
-                        hist[d]   += np.array(counts_i) / sel_mask['h_frac'][d][m]
-                        mstar_mean[d] += [np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]
+                    counts[d] += counts_i
+                    hist[d]   += np.array(counts_i) / sel_mask['h_frac'][d][m]
+                    mstar_mean[d] += [np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]
 
         bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
         norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
@@ -461,40 +448,62 @@ class split_halos():
 
         return  {'f_gas':f_gas, 'm500':m500c_mean}
 
-def read_zoom(base=None, filebase="snapshot_ics_000"):
+def metric(m1,m2,v1,v2,eul_dist,a,b,c):
 
-    files = [filebase+".{:d}.hdf5".format(ifile) for ifile in range(8)]
+    d_m = np.abs( (1 - m1[...,np.newaxis]/m2)/0.2 )
+    d_v = np.abs( (1 - v1[...,np.newaxis]/v2)/0.2 )
 
-    with h5py.File(base+files[0], 'r') as f:
-        NpartTotal = np.uint64(f['Header'].attrs['NumPart_Total'])
+    return a*eul_dist + d_m*b + d_v*c
 
-    pos1 = np.zeros((NpartTotal[1], 3), dtype=np.float32)
-    pos2 = np.zeros((NpartTotal[2], 3), dtype=np.float32)
-    pos3 = np.zeros((NpartTotal[3], 3), dtype=np.float32)
+def cross_match(zoom, snap, name=None):
 
-    istart1 = np.uint64(0); istart2 = np.uint64(0); istart3 = np.uint64(0)
-    for ffname in files:
-        with h5py.File(base+ffname, 'r') as f:
-            npts1 = np.uint64(f['Header'].attrs['NumPart_ThisFile'][1])
-            npts2 = np.uint64(f['Header'].attrs['NumPart_ThisFile'][2])
-            npts3 = np.uint64(f['Header'].attrs['NumPart_ThisFile'][3])
+    import numpy.ma as ma
+    import scipy
 
-            print(
-                'Read data for {0}/{1} {1}/{2} {3}/{4} particles...'.format(
-                    istart1+npts1, NpartTotal[1], istart2+npts2, NpartTotal[2], istart3+npts3, NpartTotal[3]))
+    # Load MTNG
+    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/MTNG/", snap=snap)
+    mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
+    mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
 
-            if npts1 >0:
-                pos1[istart1:istart1 + npts1] = f[u'PartType1']['Coordinates'][()]
-            if npts2 >0:
-                pos2[istart2:istart2 + npts2] = f[u'PartType2']['Coordinates'][()]
-            if npts3 >0:
-                pos3[istart3:istart3 + npts3] = f[u'PartType3']['Coordinates'][()]
+    # Load halo selection
+    with open("/lscratch/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+        final_sel = []
+        for line in f.readlines():
+            final_sel.append(int(line.split()[0]))
+    final_sel = np.array(final_sel)
 
-        istart1 += npts1
-        istart2 += npts2
-        istart3 += npts3
+    # position matching
+    X1 = zoom.fof['halo_pos']
+    X2 = mtng.fof['halo_pos'][final_sel]
 
-    return {'pos1':pos1, 'pos2':pos2, 'pos3':pos3}
+    kdt = scipy.spatial.KDTree(X1, boxsize=mtng.header['BoxSize'])
+    dist, ind = kdt.query(X2, k=100)
+
+    # load halo properties
+    M1 = 1e10 * zoom.fof['halo_m200b'][ind]
+    M2 = 1e10 * mtng.fof['halo_m200b'][final_sel]
+
+    pos1 = np.transpose(zoom.fof['halo_pos'][ind], (2,0,1))
+    pos2 = mtng.fof['halo_pos'][final_sel].T
+
+    vmax_1 = zoom.sub['vmax'][zoom.fof['halo_firstsub'][ind]]
+    vmax_2 = mtng.sub['vmax'][mtng.fof['halo_firstsub'][final_sel]]
+
+    d = metric(M2,M1,vmax_2,vmax_1,dist,5,1,1)
+
+    xmatch = np.zeros(len(M1), dtype=int)
+    dmatch = np.zeros(len(M1))
+    metr = np.zeros(len(M1))
+
+    for i in range(len(M1)):
+        metr[i] = d[i].min()
+        xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
+        dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
+
+#    ma_xmatch = ma.masked_array(xmatch, mask=metr > 6)
+
+    return {'ind':xmatch, 'd':dmatch}
+        
 
 def read_cpu(filename=None, skiprows=[]):
     with open(filename) as f:
@@ -529,6 +538,8 @@ def dict2d_sum(dict):
             res_sum[i] += dict[i][j]
 
     return res_sum
+
+# CAMELS Functions
 
 def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, baseline=False, boxsize=25, hfac=0.6711):
     '''
