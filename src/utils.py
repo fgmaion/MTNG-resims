@@ -199,15 +199,15 @@ class split_halos():
 
         return  {'smf':hist, 'bins':bins, 'mstar':mstar_mean}
 
-    def halo_gas_frac(self, mhalo_edges=None, sel_mask=None, vmax_sel=False, draws=1, nbins=100):
+    def halo_gas_frac(self, sel_mask=None, draws=1, nbins=100):
         '''
+            Function to get the fraction of gas in a selection, binned as a function of halo masses
         '''
 
         bins = np.logspace(10, 14, nbins)
 
-        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
-        _m500c = 1e10 * self.sim.fof['halo_m500c'][presel]
-        _main_sub = self.sim.fof['halo_firstsub'][presel]
+        _m500c = 1e10 * self.sim.fof['halo_m500c']
+        _main_sub = self.sim.fof['halo_firstsub']
         _mgas  = 1e10 * self.sim.sub['MassType'][:,0][_main_sub]
         _mtot =  1e10 * np.sum(self.sim.sub['MassType'], axis=1)[_main_sub]
 
@@ -216,46 +216,22 @@ class split_halos():
         fgas       = {d:np.zeros(nbins-1) for d in range(draws)}
         m500c_mean = {d:np.zeros(nbins-1) for d in range(draws)}
 
-        if vmax_sel is True:
-            for d in range(draws):
-                for m in range(len(sel_mask['sel'])):
-                    if sel_mask['h_frac'][m][d]!=0:
-                        for v in range(len(sel_mask['sel'][m][d])):
-                        
-                            mgas = _mgas[sel_mask['sel'][m][d][v]]
-                            mtot = _mtot[sel_mask['sel'][m][d][v]]
-                            m500c = _m500c[sel_mask['sel'][m][d][v]]
+        for d in range(draws):
+            for m in range(len(sel_mask['sel'])):
+                if sel_mask['h_frac'][d][m]!=0:
+                    
+                    mgas = _mgas[sel_mask['sel'][m][d]]
+                    mtot = _mtot[sel_mask['sel'][m][d]]
+                    m500c = _m500c[sel_mask['sel'][m][d]]
 
-                            ids = np.digitize(m500c, bins)
+                    ids = np.digitize(m500c, bins)
 
-                            if ids>=nbins:
-                                continue
-                            if ids<=0:
-                                continue
+                    counts_i = np.array([np.sum( np.ones(len(m500c))[np.where(ids==j)]) for j in range(1,len(bins))])
+                    counts[d] += counts_i
+                    weights[d] += counts_i / sel_mask['h_frac'][d][m] 
 
-                            counts[d][ids-1] += 1
-                            weights[d][ids-1] += 1 / sel_mask['h_frac'][m][d][v]
-
-                            fgas[d][ids-1] += (mgas/mtot) / sel_mask['h_frac'][m][d][v]
-                            m500c_mean[d][ids-1] += m500c
-
-        else:
-            for d in range(draws):
-                for m in range(len(sel_mask['sel'])):
-                    if sel_mask['h_frac'][d][m]!=0:
-                        
-                        mgas = _mgas[sel_mask['sel'][m][d]]
-                        mtot = _mtot[sel_mask['sel'][m][d]]
-                        m500c = _m500c[sel_mask['sel'][m][d]]
-
-                        ids = np.digitize(m500c, bins)
-
-                        counts_i = np.array([np.sum( np.ones(len(m500c))[np.where(ids==j)]) for j in range(1,len(bins))])
-                        counts[d] += counts_i
-                        weights[d] += counts_i / sel_mask['h_frac'][d][m] 
-
-                        fgas[d] += np.array([np.sum((mgas/mtot)[np.where(ids==j)]) for j in range(1,nbins)]) / sel_mask['h_frac'][d][m]
-                        m500c_mean[d] += [np.sum(m500c[np.where(ids==j)]) for j in range(1,nbins)]
+                    fgas[d] += np.array([np.sum((mgas/mtot)[np.where(ids==j)]) for j in range(1,nbins)]) / sel_mask['h_frac'][d][m]
+                    m500c_mean[d] += [np.sum(m500c[np.where(ids==j)]) for j in range(1,nbins)]
 
         for d in range(draws):
             fgas[d] /= weights[d]
