@@ -50,9 +50,9 @@ class tree:
         # find the files that contain these trees
         self.tree_arr = self.find_tree_filenum(self.treeID)
 
-        offset = self.load_tree_prop(['TreeTable', 'StartOffset'], 386)
-        tree_ids = self.load_tree_prop(['TreeTable', 'TreeID'], 386)
-        length = self.load_tree_prop(['TreeTable', 'Length'], 386)
+        offset = self.load_tree_prop(['TreeTable', 'StartOffset'], 639)
+        tree_ids = self.load_tree_prop(['TreeTable', 'TreeID'], 639)
+        length = self.load_tree_prop(['TreeTable', 'Length'], 639)
         self.prop_dic = {tree_ids[i]:{'Offset':offset[i], 'Len':length[i]} for i in range(len(tree_ids))}
 
         tree_file = self.find_tree_filenum(self.treeID)
@@ -62,7 +62,7 @@ class tree:
         self.group_nr = {}
 
         for n in range(len(halo_index)):
-            print("Done with halo {:d}".format(n))
+            print("Done with halo {:d}".format(n), end='\r')
             nsubs1 = int(0)
             nsubs2 = int(0)
             i = int(0)
@@ -83,7 +83,7 @@ class tree:
                     self.firstprog[n] = f['TreeHalos']['TreeMainProgenitor'][(off - nsubs1):(off - nsubs1)+lenn]
                     self.group_nr[n] = f['TreeHalos']['GroupNr'][(off - nsubs1):(off - nsubs1)+lenn]
             else:
-                print("Tree incomplete")
+                print("Tree incomplete") # This happens when the tree is divided in 2 different files, does not indicate a problem
                 with h5py.File("/cosmos_storage/simulations/MTNG/treedata/trees.{:d}.hdf5".format(tree_file[self.treeID[n]][0]), 'r') as f:
                     main_1 = f['TreeHalos']['SubhaloMass'][(off - nsubs1):]
                     main_2 = f['TreeHalos']['TreeMainProgenitor'][(off - nsubs1):]
