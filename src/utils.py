@@ -432,6 +432,24 @@ def metric(m1,m2,v1,v2,eul_dist,a,b,c):
     return a*eul_dist + d_m*b + d_v*c
 
 def cross_match(zoom, snap, name=None):
+    '''
+    Cross-match two catalogs of halos based on their position and properties.
+    Parameters
+    ----------
+    zoom : bacco.Simulation
+        The simulation to match with MTNG
+    snap : int
+        The snapshot number
+    name : str, optional
+        The name of the output dictionary, by default None
+        
+    Returns
+    -------
+    dict
+        A dictionary with the following keys:
+        - ind: the index of the matched halo in the zoom simulation
+        - d: the distance between the matched halos
+    '''
 
     import numpy.ma as ma
     import scipy
@@ -475,10 +493,11 @@ def cross_match(zoom, snap, name=None):
         metr[i] = d[i].min()
         xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
         dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
+    if name is None:
+        return {'ind':xmatch, 'd':dmatch}
+    else:
+        return {name: {'ind':xmatch, 'd':dmatch}}
 
-#    ma_xmatch = ma.masked_array(xmatch, mask=metr > 6)
-
-    return {'ind':xmatch, 'd':dmatch}
         
 
 def read_cpu(filename=None, skiprows=[]):
@@ -672,3 +691,100 @@ def camels_get_LH_pars(num=None):
     f.close()
 
     return np.asarray([par1, par2, par3, par4])
+
+def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
+    
+    if mtng:
+        mbID[np.where(mbID>=1)] -= 20155392000
+        mbID[np.where(mbID<1)] += 80621568000
+
+    q = np.zeros(mbID.shape + (3,), dtype=np.float32)
+
+    q[..., 0] = (mbID - idstart) // npart**2
+    q[..., 1] = ( (mbID - idstart) // npart) % npart
+    q[..., 2] = (mbID - idstart) % npart
+
+    # normalize correctly
+    q *= (BoxSize / npart)
+
+    return q
+
+def read_central_xmatch(sim_name):
+    mtng_id = []
+    zoom_id = []
+
+    dx = []
+    dy = []
+    dz = []
+
+    with open("/lscratch/kwalsen/xmatch/"+sim_name+"/selection_xmatch_deltas.csv", 'r') as f:
+        for i, line in enumerate(f.readlines()):
+            if i==0:
+                continue
+            line = line.strip('\n').split(',')
+            try:
+                mtng_id.append(int(line[1]))
+                zoom_id.append(int(line[2]))
+                dx.append(float(line[3]))
+                dy.append(float(line[4]))
+                dz.append(float(line[5]))
+            except:
+                mtng_id.append(int(line[1]))
+                dx.append(0)
+                dy.append(0)
+                dz.append(0)
+                print("failed for line: {}".format(line))
+
+    return {'mtng_id': np.array(mtng_id), 'zoom_id': np.array(zoom_id), 'dx': np.array(dx), 'dy': np.array(dy), 'dz': np.array(dz)}
+
+def metric(m1,m2,v1,v2,dist,a,b,c):
+
+    #d_m = np.abs(np.log10(m1[...,np.newaxis]/m2))
+    #d_v = np.abs(v1[...,np.newaxis]-v2)
+
+    d_m = np.abs( (1 - m1[...,np.newaxis]/m2)/0.2 )
+    d_v = np.abs( (1 - v1[...,np.newaxis]/v2)/0.2 )
+
+    return dist*a + d_m*b + d_v*c
+
+def cross_match(zoom, mtng, sel, shift=None):
+
+    from scipy.spatial import KDTree
+
+    # Build kdtree with 100 NN
+    psel = np.where(zoom.fof['halo_m200b']>0)[0]
+
+    X1 = zoom.fof['halo_pos'][psel]
+    X2 = mtng.fof['halo_pos'][sel]
+
+    if shift is not None:
+        X2 -= shift
+
+    kdt = KDTree(X1, boxsize=500)
+    dist, ind = kdt.query(X2, k=100)
+
+    ind[np.where(dist==np.inf)] = -1
+
+    # Get properties of the 100 NN
+    M1 = 1e10 * zoom.fof['halo_m200b'][psel][ind]
+    M2 = 1e10 * mtng.fof['halo_m200b'][sel]
+
+    pos1 = np.transpose(zoom.fof['halo_pos'][psel][ind], (2,0,1))
+    pos2 = mtng.fof['halo_pos'][sel].T
+
+    vmax_1 = zoom.sub['vmax'][zoom.fof['halo_firstsub'][psel][ind]]
+    vmax_2 = mtng.sub['vmax'][mtng.fof['halo_firstsub'][sel]]
+
+    # Compute cross-matching
+    d = metric(M2,M1,vmax_2,vmax_1,dist,100,1,1)
+
+    xmatch = np.zeros(len(M1), dtype=int)
+    dmatch = np.zeros(len(M1))
+    metr = np.zeros(len(M1))
+
+    for i in range(len(M1)):
+        metr[i] = d[i].min()
+        xmatch[i] = ind[i,np.where(d[i]==d[i].min())[0][0]]
+        dmatch[i] = dist[i,np.where(d[i]==d[i].min())[0][0]]
+
+    return {'xm':xmatch, 'dm':dmatch, 'metric':metr}
