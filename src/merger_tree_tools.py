@@ -163,7 +163,7 @@ class tree:
 
         tree_max = 0
         i = 0
-        while tree_max < np.max(self.file_tree_ID) + 1:
+        while tree_max < np.max(self.file_tree_ID) + 1 and i < 640:
             with h5py.File(self.sim_base+"treedata/trees.{:d}.hdf5".format(i)) as f:
                 tree_ids = f['TreeTable']['TreeID'][...]
                 tree_max = tree_ids[-1]
@@ -182,7 +182,7 @@ class tree:
         print("Walking the Tree")
 
         tree_indices = self.file_tree_index
-        self.fp_idx[self.snap_0-1] = tree_indices
+        self.fp_idx[self.snap_0-1] = tree_indices + self.tree_offsets[self.file_tree_ID]
 
         for j in range(len(tree_indices)):
             
@@ -220,11 +220,14 @@ class tree:
         for file_number in files:
             treelink=self.sim_base+"single_files/file{0:01}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(file_number, snap, file_number)
 
-            with h5py.File(treelink) as file:
-                file_tree_ID.extend( file['Subhalo']['TreeID'][...] )
-                file_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
-                ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...])) )
-
+            try:
+                with h5py.File(treelink) as file:
+                    file_tree_ID.extend( file['Subhalo']['TreeID'][...] )
+                    file_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
+                    ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...])) )
+            except:
+                continue
+                
         file_tree_ID = np.array(file_tree_ID, dtype=int)
         ifile = np.array(ifile, dtype=int)
 
@@ -234,22 +237,77 @@ class tree:
 
         return file_tree_ID, file_tree_index, ifile
 
-    # def get_sub_file_props(self, files=[0,1]):
+    def get_sub_file_props(self, files=[0,1]):
     
-    #     self.get_sub_tree_props(files=files)
-    #     self.walk_subs()
+        self.get_sub_tree_props(files=files)
+        self.walk_subs()
+        print("Done Walking Tree")
 
-    #     self.sub_mass = np.zeros((self.snap_0, len(self.file_tree_index)), dtype=int)
+        self.sub_tree_prop = {}
+        self.sub_tree_prop['SubhaloMass'] =  np.zeros( (self.snap_0, len(self.file_tree_index)) )
+        self.sub_tree_prop['SubhaloMassType'] =  np.zeros( (self.snap_0, len(self.file_tree_index), 6) )
+        self.sub_tree_prop['SubhaloIDMostbound'] =  np.zeros( (self.snap_0, len(self.file_tree_index)), dtype=int )
+        self.sub_tree_prop['SubhaloPos'] =  np.zeros( (self.snap_0, len(self.file_tree_index), 3) )
+        self.sub_tree_prop['SubhaloIntertiaTensorStars'] =  np.zeros( (self.snap_0, len(self.file_tree_index), 6) )
+        self.sub_tree_prop['SubhaloRotationalEnergyStars'] =  np.zeros( (self.snap_0, len(self.file_tree_index)) )
+        self.sub_tree_prop['SubhaloSFR'] =  np.zeros( (self.snap_0, len(self.file_tree_index)) )
 
+        # loading all data of the single-files
+        print("Starting to load single-files")
+        for s in range(self.snap_0-15): 
+            # This factor of 15 is to avoid trying to load the very early snapshots 
+            # -- those will need to climb the tree very high, and are thus costly, but to a minimal gain since their information is basically useless and for very few subhalos
 
-    #     for i in range(self.snap_0-1):
+            # get the tree-indexes of file-subhalos in higher-redshift files -- uses treelink files
+            treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s, files=files)
 
-            
-    #         treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-i-1, files=files)
-    #         self.sub_mass[self.snap_0-i-1] =
+            # intersect these tree-indexes with those of the tree which we have walked
+            _, fileCommon, treeCommon = np.intersect1d( treeIndex, self.fp_idx[self.snap_0-s-1,:], return_indices=True)
 
-        # Get the tree-indexes of the subhalos that are in higher-redshift snaps
+            # get all the interesting properties stored in the single-files, for all snapshots
+            ################ READING SINGLE-FILES ###################
+            total_Nsub = int(0)
+            for i in files:
+                file_i = np.load(self.sim_base+'single_files/file{:d}/reduced_fof_subhalo_tab_{:03d}.{:d}.npy'.format(i,self.snap_0-s,i), allow_pickle=True)[0]
+                total_Nsub += int(file_i['Header']['Nsubhalos_ThisFile'])
 
+            _mass = np.empty(total_Nsub)
+            _mass_type = np.empty((total_Nsub, 6))
+            _id_mostbound = np.empty(total_Nsub, dtype=int)
+            _pos = np.empty((total_Nsub, 3))
+            _intertia_tensor = np.empty((total_Nsub, 6))
+            _rotational_energy = np.empty(total_Nsub)
+            _sfr = np.empty(total_Nsub)
+
+            cumsub = 0
+            for i in files:
+                file_i = np.load(self.sim_base+'single_files/file{:d}/reduced_fof_subhalo_tab_{:03d}.{:d}.npy'.format(i,self.snap_0-s,i), allow_pickle=True)[0]
+                nsub = int(file_i['Header']['Nsubhalos_ThisFile'])
+
+                try:
+                    file_i['Subhalo']['SubhaloMass']
+                except:
+                    continue
+
+                _mass[cumsub:cumsub+nsub]              = file_i['Subhalo']['SubhaloMass']
+                _mass_type[cumsub:cumsub+nsub,:]       = file_i['Subhalo']['SubhaloMassType']
+                _id_mostbound[cumsub:cumsub+nsub]      = file_i['Subhalo']['SubhaloIDMostbound']
+                _pos[cumsub:cumsub+nsub,:]             = file_i['Subhalo']['SubhaloPos']
+                _intertia_tensor[cumsub:cumsub+nsub,:] = file_i['Subhalo']['SubhaloIntertiaTensorStars']
+                _rotational_energy[cumsub:cumsub+nsub] = file_i['Subhalo']['SubhaloRotationalEnergyStars']
+                _sfr[cumsub:cumsub+nsub]               = file_i['Subhalo']['SubhaloSFR']
+
+                cumsub += nsub
+            ################# DONE WITH SINGLE FILES ###################
+            print("Done with snap {:d}".format(s), end='\r')
+
+            self.sub_tree_prop['SubhaloMass'][self.snap_0-s-1,treeCommon] = _mass[fileCommon]
+            self.sub_tree_prop['SubhaloMassType'][self.snap_0-s-1,treeCommon,...] = _mass_type[fileCommon,...]
+            self.sub_tree_prop['SubhaloIDMostbound'][self.snap_0-s-1,treeCommon] = _id_mostbound[fileCommon]
+            self.sub_tree_prop['SubhaloPos'][self.snap_0-s-1,treeCommon,...] = _pos[fileCommon,...]
+            self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,treeCommon,...] = _intertia_tensor[fileCommon,...]
+            self.sub_tree_prop['SubhaloRotationalEnergyStars'][self.snap_0-s-1,treeCommon] = _rotational_energy[fileCommon]
+            self.sub_tree_prop['SubhaloSFR'][self.snap_0-s-1,treeCommon] = _sfr[fileCommon]
 
     def get_all_progs(self, snap_0, depth):
 
