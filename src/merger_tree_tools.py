@@ -4,6 +4,24 @@ import h5py
 import functools
 import bacco
 
+def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
+    
+    if mtng:
+        mbID[np.where(mbID>=1)] -= 20155392000
+        mbID[np.where(mbID<1)] += 80621568000
+
+    q = np.zeros(mbID.shape + (3,), dtype=np.float32)
+
+    q[..., 0] = (mbID - idstart) // npart**2
+    q[..., 1] = ( (mbID - idstart) // npart) % npart
+    q[..., 2] = (mbID - idstart) % npart
+
+    # normalize correctly
+    q *= (BoxSize / npart)
+
+    return q
+
+
 class tree:
 
     def __init__(self, snap_0=264, tree_format='MTNG', name=None):
@@ -245,6 +263,7 @@ class tree:
 
         self.sub_tree_prop = {}
         self.sub_tree_prop['SubhaloMass'] =  np.zeros( (self.snap_0, len(self.file_tree_index)) )
+        self.sub_tree_prop['SubhaloIsCen'] =  np.zeros( (self.snap_0, len(self.file_tree_index)) )
         self.sub_tree_prop['SubhaloMassType'] =  np.zeros( (self.snap_0, len(self.file_tree_index), 6) )
         self.sub_tree_prop['SubhaloIDMostbound'] =  np.zeros( (self.snap_0, len(self.file_tree_index)), dtype=int )
         self.sub_tree_prop['SubhaloPos'] =  np.zeros( (self.snap_0, len(self.file_tree_index), 3) )
@@ -272,6 +291,7 @@ class tree:
                 total_Nsub += int(file_i['Header']['Nsubhalos_ThisFile'])
 
             _mass = np.empty(total_Nsub)
+            _is_cen = np.zeros(total_Nsub)
             _mass_type = np.empty((total_Nsub, 6))
             _id_mostbound = np.empty(total_Nsub, dtype=int)
             _pos = np.empty((total_Nsub, 3))
@@ -290,6 +310,8 @@ class tree:
                     continue
 
                 _mass[cumsub:cumsub+nsub]              = file_i['Subhalo']['SubhaloMass']
+                sel = file_i['Group']['GroupFirstSub'] < total_Nsub
+                _is_cen[file_i['Group']['GroupFirstSub'][sel]] = np.ones(len(file_i['Group']['GroupFirstSub'][sel]))
                 _mass_type[cumsub:cumsub+nsub,:]       = file_i['Subhalo']['SubhaloMassType']
                 _id_mostbound[cumsub:cumsub+nsub]      = file_i['Subhalo']['SubhaloIDMostbound']
                 _pos[cumsub:cumsub+nsub,:]             = file_i['Subhalo']['SubhaloPos']
@@ -302,12 +324,60 @@ class tree:
             print("Done with snap {:d}".format(s), end='\r')
 
             self.sub_tree_prop['SubhaloMass'][self.snap_0-s-1,treeCommon] = _mass[fileCommon]
+            self.sub_tree_prop['SubhaloIsCen'][self.snap_0-s-1,treeCommon] = _is_cen[fileCommon]
             self.sub_tree_prop['SubhaloMassType'][self.snap_0-s-1,treeCommon,...] = _mass_type[fileCommon,...]
             self.sub_tree_prop['SubhaloIDMostbound'][self.snap_0-s-1,treeCommon] = _id_mostbound[fileCommon]
             self.sub_tree_prop['SubhaloPos'][self.snap_0-s-1,treeCommon,...] = _pos[fileCommon,...]
             self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,treeCommon,...] = _intertia_tensor[fileCommon,...]
             self.sub_tree_prop['SubhaloRotationalEnergyStars'][self.snap_0-s-1,treeCommon] = _rotational_energy[fileCommon]
             self.sub_tree_prop['SubhaloSFR'][self.snap_0-s-1,treeCommon] = _sfr[fileCommon]
+
+    def get_d_bias_history(self, ngrid=192, damping_scale=0.1, files=None, recompute=False):
+        '''
+            In this function we wish to apply the probabilistic bias-estimators to the
+            subhalos we have
+        '''
+
+        import bacco
+        import bacco.probabilistic_bias as pb
+
+        # lagrangian positions of the galaxies
+        lag_pos = q_pos(prop['mbID'][:,0], mtng=True, idstart=0)
+
+        # MTNG Mimic
+        dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG-mimic/output/"
+
+        dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
+                            ngenic_phases=True, phase_type=2, fixedPk=True)
+
+        dm_mtng.header['Seed'] = 100672
+
+        # These are the variables that need to be measured on a Lagrangian grid
+        variables = ("J2", "J2=2", "J4", "J4=4", "J2=4")
+        terms = ("J2", "J22", "J2=2")
+
+        pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=damping_scale, ngrid=ngrid, verbose=2)
+        D_model = pbm.setup_bias_model(pb.TensorBiasND, terms=terms, spatial_order=4)
+
+        # total number of subhalos considering several files
+        nsub = 0
+        for fn in files:
+            nsub += len(group_file_index[self.snap_0][fn])
+
+        # set the arrays to receive properties
+        b1_bpo = -1 * np.ones((nsub, self.depth, 3))
+
+        for i in range(self.depth):
+            pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[i]))
+
+            for fn in files:
+                # Note if you pass the parameter  cachedir="path/to/some/empty/directory"
+                # you may save some time, at the cost of storing some extra files
+
+                tr_q, tr_value, tr_mask = pbm._define_tracers(tracer_q=lag_pos[group_tree_index[self.snap_0-i][fn]])
+                b1_bpo[group_tree_index[self.snap_0-i][fn], self.depth-i-1] = D_model.bias_per_object(tr_value)
+
+        return b1_bpo
 
     def get_all_progs(self, snap_0, depth):
 
