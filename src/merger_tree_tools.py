@@ -29,7 +29,7 @@ def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
 
 class tree:
 
-    def __init__(self, snap_0=264, tree_format='MTNG', name=None):
+    def __init__(self, snap_0=264, tree_format='MTNG', name=None, to_read=None):
         self.snap_0 = snap_0
         self.tree_format = tree_format
 
@@ -41,6 +41,8 @@ class tree:
             self.sim_base = "/cosmos_storage/data_sharing/MN5_resims/"+name+"/hydro_output/"
             self.sim_0 = bacco.utils.load_zoom(snap=self.snap_0, name=name)
 
+
+        self.to_read = to_read
         self.get_redshift()
 
     def get_redshift(self):
@@ -52,25 +54,34 @@ class tree:
 
     def get_sub_tree_props(self):
         '''
-            This function takes as arguments the numbers of some single-files, and returns
+            This function returns
             the tree-relative ID and Index of the subhalos there contained.
-
+            
         '''
+
         self.sub_tree_ID = []
         self.sub_tree_index = []
         self.ifile = []
-
+        
+        print( "Reading tree-relevant ID and index of subhalos in group {:d}".format(self.snap_0) )
         for file_number in range(640):
-            treelink=self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(self.snap_0, self.snap_0, file_number)
+            print("Done with file {:d}".format(file_number), end="\r")
+            treelink = self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(self.snap_0, self.snap_0, file_number)
 
             with h5py.File(treelink) as file:
                 self.sub_tree_ID.extend( file['Subhalo']['TreeID'][...] )
                 self.sub_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
-                self.ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...])) )
+                self.ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
+        
+        if self.to_read is None:
+            self.sub_tree_index = np.array(self.sub_tree_index)
+            self.sub_tree_ID = np.array(self.sub_tree_ID)
+            self.ifile = np.array(self.ifile)
 
-        self.sub_tree_index = np.array(self.sub_tree_index)
-        self.sub_tree_ID = np.array(self.sub_tree_ID)
-        self.ifile = np.array(self.ifile)
+        else:
+            self.sub_tree_index = np.array(self.sub_tree_index)[self.to_read]
+            self.sub_tree_ID = np.array(self.sub_tree_ID)[self.to_read]
+            self.ifile = np.array(self.ifile)[self.to_read]
 
     def read_tree(self):
         '''
@@ -86,13 +97,19 @@ class tree:
         sub_mainprog = np.empty(0, dtype=int) 
         tree_offsets = np.empty(0, dtype=int)
 
-        for i in range(640):
+        global_max = np.max(self.sub_tree_ID)
+        local_max = 0
+        i = 0
+        while (local_max <= global_max and i < 640):
+            print("Now reading file {:d}".format(i), end='\r')
             with h5py.File(self.sim_base+"treedata/trees.{:d}.hdf5".format(i)) as f:
                 tree_ids = f['TreeTable']['TreeID'][...]
-                tree_max = tree_ids[-1]
+                local_max = tree_ids[-1]
 
                 tree_offsets = np.hstack( (tree_offsets, f['TreeTable']['StartOffset'][...] ) )
                 sub_mainprog = np.hstack( (sub_mainprog, f['TreeHalos']['TreeMainProgenitor'][...] ) )
+
+            i+=1
 
         self.tree_offsets = tree_offsets
         self.sub_mainprog = sub_mainprog
@@ -115,7 +132,7 @@ class tree:
         print("Walking the Tree")
 
         tree_indices = self.sub_tree_index
-        self.fp_idx[self.snap_0-1] = tree_indices + self.tree_offsets[self.sub_tree_ID]
+        self.fp_idx[self.snap_0-1] = tree_indices + self.tree_offsets[self.sub_tree_ID] 
 
         for j in range(len(tree_indices)):
             
@@ -150,20 +167,20 @@ class tree:
 
         return tree_offsets
 
-    def _sub_treeindex(self, snap, files):
+    def _sub_treeindex(self, snap):
 
         sub_tree_ID = []
         sub_tree_index = []
         ifile = []
         
-        for file_number in files:
-            treelink=self.sim_base+"single_files/tmp/subhalo_treelink_{1:03}.{2:01}.hdf5".format(file_number, snap, file_number)
+        for file_number in range(640):
+            treelink=self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(snap, snap, file_number)
 
             try:
                 with h5py.File(treelink) as file:
                     sub_tree_ID.extend( file['Subhalo']['TreeID'][...] )
                     sub_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
-                    ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...])) )
+                    ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
             except:
                 continue
                 
@@ -205,23 +222,23 @@ class tree:
         self.sub_tree_prop['SubhaloRotationalEnergyStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
         self.sub_tree_prop['SubhaloSFR'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
 
-        # loading all data of the single-files
-        print("Starting to load single-files")
+        # loading all data
+        print("Starting to load data")
         for s in range(0, self.snap_0, 10): 
-            # get the tree-indexes of file-subhalos in higher-redshift files -- uses treelink files
+            print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
-            # intersect these tree-indexes with those of the tree which we have walked
+            print("Intersecting indexes of walked subhalos and those at the high-redshift snapshot")
             _, fileCommon, treeCommon = np.intersect1d( treeIndex, self.fp_idx[self.snap_0-s-1,:], return_indices=True)
-
-            # get all the interesting properties stored in the single-files, for all snapshots
+            assert(treeCommon.shape == self.fp_idx[self.snap_0-s-1,:].shape)
+            
+            # get all the interesting properties stored in the group-files, for all available snapshots
             ################ READING SINGLE-FILES ###################
             total_Nsub = int(0)
             for i in range(640):
-                #TODO: This has to be corrected, since the format being used right now is the one of the reduced files, even though
-                # I'm not sure if I plan to reduce these files.
-                file_i = np.load(self.sim_base+'single_files/file{:d}/reduced_fof_subhalo_tab_{:03d}.{:d}.npy'.format(i,self.snap_0-s,i), allow_pickle=True)[0]
-                total_Nsub += int(file_i['Header']['Nsubhalos_ThisFile'])
+                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s), end='\r')
+                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
+                    total_Nsub += int(f['Header'].attrs['Nsubhalos_ThisFile'])
 
             _mass = np.empty(total_Nsub)
             _is_cen = np.zeros(total_Nsub)
@@ -233,27 +250,29 @@ class tree:
             _sfr = np.empty(total_Nsub)
 
             cumsub = 0
-            for i in files:
-                file_i = np.load(self.sim_base+'single_files/file{:d}/reduced_fof_subhalo_tab_{:03d}.{:d}.npy'.format(i,self.snap_0-s,i), allow_pickle=True)[0]
-                nsub = int(file_i['Header']['Nsubhalos_ThisFile'])
+            for i in range(640):
+                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s), end='\r')
 
-                try:
-                    file_i['Subhalo']['SubhaloMass']
-                except:
-                    continue
+                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
+                    nsub = int(f['Header'].attrs['Nsubhalos_ThisFile'])
 
-                _mass[cumsub:cumsub+nsub]              = file_i['Subhalo']['SubhaloMass']
-                sel = file_i['Group']['GroupFirstSub'] < total_Nsub
-                _is_cen[file_i['Group']['GroupFirstSub'][sel]] = np.ones(len(file_i['Group']['GroupFirstSub'][sel]))
-                _mass_type[cumsub:cumsub+nsub,:]       = file_i['Subhalo']['SubhaloMassType']
-                _id_mostbound[cumsub:cumsub+nsub]      = file_i['Subhalo']['SubhaloIDMostbound']
-                _pos[cumsub:cumsub+nsub,:]             = file_i['Subhalo']['SubhaloPos']
-                _intertia_tensor[cumsub:cumsub+nsub,:] = file_i['Subhalo']['SubhaloIntertiaTensorStars']
-                _rotational_energy[cumsub:cumsub+nsub] = file_i['Subhalo']['SubhaloRotationalEnergyStars']
-                _sfr[cumsub:cumsub+nsub]               = file_i['Subhalo']['SubhaloSFR']
+                    try:
+                        f['Subhalo']['SubhaloMass']
+                    except:
+                        continue
+
+                    _mass[cumsub:cumsub+nsub]                 = f['Subhalo']['SubhaloMass']
+#                    sel                                       = f['Group']['GroupFirstSub'][...] < total_Nsub
+                    _is_cen[f['Group']['GroupFirstSub']] = np.ones(len(f['Group']['GroupFirstSub']))
+                    _mass_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloMassType']
+                    _id_mostbound[cumsub:cumsub+nsub]      = f['Subhalo']['SubhaloIDMostbound']
+                    _pos[cumsub:cumsub+nsub,:]             = f['Subhalo']['SubhaloPos']
+                    _intertia_tensor[cumsub:cumsub+nsub,:] = f['Subhalo']['SubhaloIntertiaTensorStars']
+                    _rotational_energy[cumsub:cumsub+nsub] = f['Subhalo']['SubhaloRotationalEnergyStars']
+                    _sfr[cumsub:cumsub+nsub]               = f['Subhalo']['SubhaloSFR']
 
                 cumsub += nsub
-            ################# DONE WITH SINGLE FILES ###################
+            ################# DONE WITH THIS SNAPSHOT  ###################
             print("Done with snap {:d}".format(s), end='\r')
 
             self.sub_tree_prop['SubhaloMass'][self.snap_0-s-1,treeCommon] = _mass[fileCommon]
