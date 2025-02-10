@@ -113,6 +113,11 @@ class tree:
 
         self.tree_offsets = tree_offsets
         self.sub_mainprog = sub_mainprog
+    def read_tree_opt(self):
+        
+        self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int32)
+        self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int32)
+
 
     def walk_subs(self):
         '''
@@ -138,7 +143,7 @@ class tree:
             
             fp = tree_indices[j]
             i = 1
-            while fp != -1:
+            while fp != -1 and i < 264:
                 fp = self.sub_mainprog[fp + self.tree_offsets[self.sub_tree_ID[j]]]
                 self.fp_idx[self.snap_0 - i - 1,j] = fp + self.tree_offsets[self.sub_tree_ID[j]]
                 i+=1
@@ -200,16 +205,28 @@ class tree:
         '''
         
         # Get tree-relative ID and index of subhalos at Snap_0
-        self.get_sub_tree_props()
+        try:
+            self.sub_tree_ID
+            self.sub_tree_index
+        except:
+            self.get_sub_tree_props()
 
         print("Reading tree")
         # Read the tree
-        self.read_tree()
+        try:
+            self.tree_offsets
+            self.sub_mainprog
+        except:
+            self.read_tree_opt()
+   
         print("Done reading tree")
         
         print("Walking Tree")
         # Walk the tree
-        self.walk_subs()
+        try:
+            self.fp_idx
+        except:
+            self.walk_subs()
         print("Done Walking Tree")
 
         self.sub_tree_prop = {}
@@ -224,13 +241,22 @@ class tree:
 
         # loading all data
         print("Starting to load data")
-        for s in range(0, self.snap_0, 10): 
+        for s in range(0, 10, 10): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
             print("Intersecting indexes of walked subhalos and those at the high-redshift snapshot")
             _, fileCommon, treeCommon = np.intersect1d( treeIndex, self.fp_idx[self.snap_0-s-1,:], return_indices=True)
-            assert(treeCommon.shape == self.fp_idx[self.snap_0-s-1,:].shape)
+            _, uni_id, counts = np.unique(self.fp_idx[self.snap_0-s-1,:], return_index=True, return_counts=True)
+
+            #TODO: there is something here I have to solve. This algorithm is not working well
+            # because, sometimes, treeCommon has fewer elements than self.fp_idx, even though they do
+            # match something in treeIndex. This arises because fp_idx can have repeated items (treeIndex cannot),
+            # which simply means objects that have come from the same progenitor.
+
+            # These guys not always match, sometimes treeCommon has
+            print(treeCommon.shape, self.fp_idx[self.snap_0-s-1,:].shape)
+
             
             # get all the interesting properties stored in the group-files, for all available snapshots
             ################ READING SINGLE-FILES ###################
@@ -273,7 +299,7 @@ class tree:
 
                 cumsub += nsub
             ################# DONE WITH THIS SNAPSHOT  ###################
-            print("Done with snap {:d}".format(s), end='\r')
+            print("Done with snap {:d}".format(s))
 
             self.sub_tree_prop['SubhaloMass'][self.snap_0-s-1,treeCommon] = _mass[fileCommon]
             self.sub_tree_prop['SubhaloIsCen'][self.snap_0-s-1,treeCommon] = _is_cen[fileCommon]
