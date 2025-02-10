@@ -74,13 +74,13 @@ class tree:
                 self.ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
         
         if self.to_read is None:
-            self.sub_tree_index = np.array(self.sub_tree_index)
-            self.sub_tree_ID = np.array(self.sub_tree_ID)
+            self.sub_tree_index = np.array(self.sub_tree_index, dtype=np.int64)
+            self.sub_tree_ID = np.array(self.sub_tree_ID, dtype=np.int64)
             self.ifile = np.array(self.ifile)
 
         else:
-            self.sub_tree_index = np.array(self.sub_tree_index)[self.to_read]
-            self.sub_tree_ID = np.array(self.sub_tree_ID)[self.to_read]
+            self.sub_tree_index = np.array(self.sub_tree_index, dtype=np.int64)[self.to_read]
+            self.sub_tree_ID = np.array(self.sub_tree_ID, dtype=np.int64)[self.to_read]
             self.ifile = np.array(self.ifile)[self.to_read]
 
     def read_tree(self):
@@ -115,8 +115,8 @@ class tree:
         self.sub_mainprog = sub_mainprog
     def read_tree_opt(self):
         
-        self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int32)
-        self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int32)
+        self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int64)
+        self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
 
 
     def walk_subs(self):
@@ -132,7 +132,7 @@ class tree:
         # we wish to follow. This key should also be added to the function read_tree above,
         # so that we read the correct type of progenitors.
 
-        self.fp_idx = np.zeros((self.snap_0, len(self.sub_tree_index)), dtype=int)
+        self.fp_idx = np.zeros((self.snap_0, len(self.sub_tree_index)), dtype=np.int64)
         
         print("Walking the Tree")
 
@@ -149,28 +149,6 @@ class tree:
                 i+=1
             
             self.fp_idx[:(self.snap_0 - i),j] = -1 * np.ones(self.snap_0 - i)
-
-    def get_TreeOffsets(self, treeID):
-        '''
-            This code goes through treeID and extracts their offsets, saving them into
-            a numpy array.
-
-            This is very important to know where to start reading any particular tree.
-        '''
-
-        tree_offsets = np.empty(0, dtype=int)
-
-        tree_max = 0
-        i = 0
-        while tree_max < np.max(treeID) + 1:
-            with h5py.File(self.sim_base+"treedata/trees.{:d}.hdf5".format(i)) as f:
-                tree_ids = f['TreeTable']['TreeID'][...]
-                tree_max = tree_ids[-1]
-
-                tree_offsets = np.hstack( (tree_offsets, f['TreeTable']['StartOffset'][...] ) )
-            i+=1
-
-        return tree_offsets
 
     def _sub_treeindex(self, snap):
 
@@ -189,12 +167,10 @@ class tree:
             except:
                 continue
                 
-        sub_tree_ID = np.array(sub_tree_ID, dtype=int)
+        sub_tree_ID = np.array(sub_tree_ID, dtype=np.int64)
         ifile = np.array(ifile, dtype=int)
 
-        tree_offsets = self.get_TreeOffsets(sub_tree_ID)
-
-        sub_tree_index = np.array(sub_tree_index + tree_offsets[sub_tree_ID], dtype=int)
+        sub_tree_index = np.array(sub_tree_index + self.tree_offsets[sub_tree_ID], dtype=np.int64)
 
         return sub_tree_ID, sub_tree_index, ifile
 
