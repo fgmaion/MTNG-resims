@@ -166,11 +166,16 @@ class tree:
                     ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
             except:
                 continue
-                
-        sub_tree_ID = np.array(sub_tree_ID, dtype=np.int64)
-        ifile = np.array(ifile, dtype=int)
 
-        sub_tree_index = np.array(sub_tree_index + self.tree_offsets[sub_tree_ID], dtype=np.int64)
+        sub_tree_ID = np.array(sub_tree_ID, dtype=np.int64)
+        sub_tree_index = np.array(sub_tree_index, dtype=np.int64)
+        ifile = np.array(ifile, dtype=int)
+                
+        sub_tree_index = sub_tree_index[sub_tree_ID <= 6885892]
+        ifile = ifile[sub_tree_ID <= 6885892]
+        sub_tree_ID = sub_tree_ID[sub_tree_ID <= 6885892]
+
+        sub_tree_index = sub_tree_index + self.tree_offsets[sub_tree_ID]
 
         return sub_tree_ID, sub_tree_index, ifile
 
@@ -217,13 +222,26 @@ class tree:
 
         # loading all data
         print("Starting to load data")
-        for s in range(0, 10, 10): 
+        for s in range(60, 100, 10): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
+            fp_index = self.fp_idx[self.snap_0-s-1,:]
+
             print("Intersecting indexes of walked subhalos and those at the high-redshift snapshot")
-            _, fileCommon, treeCommon = np.intersect1d( treeIndex, self.fp_idx[self.snap_0-s-1,:], return_indices=True)
-            _, uni_id, counts = np.unique(self.fp_idx[self.snap_0-s-1,:], return_index=True, return_counts=True)
+            _, fileCommon, treeCommon = np.intersect1d( treeIndex, fp_index, return_indices=True)
+            # Now we find the positions of unique and non-unique elements of the tree-indices
+            uni_els, uni_id, counts = np.unique(fp_index, return_index=True, return_counts=True)
+            nuni_id = np.where(counts > 1)[0]
+            
+            print()
+            # Now for each id in the non-unique list we enter a loop
+            for i in range(len(nuni_id)):
+                w_i = np.where(fp_index==uni_els[nuni_id[i]])[0]
+                # Now we loop over all elements of w_i
+                for j in range(1, len(w_i)):
+                    treeCommon = np.append( treeCommon, w_i[j] )
+                    fileCommon = np.append( fileCommon, fileCommon[w_i[0]] )
 
             #TODO: there is something here I have to solve. This algorithm is not working well
             # because, sometimes, treeCommon has fewer elements than self.fp_idx, even though they do
@@ -231,7 +249,7 @@ class tree:
             # which simply means objects that have come from the same progenitor.
 
             # These guys not always match, sometimes treeCommon has
-            print(treeCommon.shape, self.fp_idx[self.snap_0-s-1,:].shape)
+            print(treeCommon.shape, fp_index.shape)
 
             
             # get all the interesting properties stored in the group-files, for all available snapshots
