@@ -237,6 +237,8 @@ class tree:
             print()
             # Now for each id in the non-unique list we enter a loop
             for i in range(len(nuni_id)):
+                if uni_els[nuni_id[i]] == -1:
+                    continue
                 w_i = np.where(fp_index==uni_els[nuni_id[i]])[0]
                 # Now we loop over all elements of w_i
                 for j in range(1, len(w_i)):
