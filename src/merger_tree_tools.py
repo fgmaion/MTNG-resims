@@ -49,7 +49,7 @@ class tree:
 
         with h5py.File(self.sim_base+"treedata/trees.{:d}.hdf5".format(0), 'r') as f:
             redshift = f['TreeTimes']['Redshift'][...]
-        self.redshift = redshift
+        self.redshift = redshift[1:]
         self.expfactor = 1. / (1. + self.redshift)
 
     def get_sub_tree_props(self):
@@ -159,13 +159,10 @@ class tree:
         for file_number in range(640):
             treelink=self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(snap, snap, file_number)
 
-            try:
-                with h5py.File(treelink) as file:
-                    sub_tree_ID.extend( file['Subhalo']['TreeID'][...] )
-                    sub_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
-                    ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
-            except:
-                continue
+            with h5py.File(treelink) as file:
+                sub_tree_ID.extend( file['Subhalo']['TreeID'][...] )
+                sub_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
+                ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
 
         sub_tree_ID = np.array(sub_tree_ID, dtype=np.int64)
         sub_tree_index = np.array(sub_tree_index, dtype=np.int64)
@@ -212,7 +209,7 @@ class tree:
 
         self.sub_tree_prop = {}
         self.sub_tree_prop['SubhaloMass'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        self.sub_tree_prop['SubhaloIsCen'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        self.sub_tree_prop['SubhaloIsCen'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=int )
         self.sub_tree_prop['SubhaloMassType'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
         self.sub_tree_prop['SubhaloIDMostbound'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=np.uint64 )
         self.sub_tree_prop['SubhaloPos'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
@@ -222,7 +219,7 @@ class tree:
 
         # loading all data
         print("Starting to load data")
-        for s in range(60, 100, 10): 
+        for s in range(0, 170, 10): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
@@ -242,13 +239,12 @@ class tree:
                 w_i = np.where(fp_index==uni_els[nuni_id[i]])[0]
                 # Now we loop over all elements of w_i
                 for j in range(1, len(w_i)):
+                    try:
+                        fileCommon = np.append( fileCommon, fileCommon[np.where(treeCommon==w_i[0])[0][0]] )
+                    except:
+                        continue
                     treeCommon = np.append( treeCommon, w_i[j] )
-                    fileCommon = np.append( fileCommon, fileCommon[w_i[0]] )
 
-            #TODO: there is something here I have to solve. This algorithm is not working well
-            # because, sometimes, treeCommon has fewer elements than self.fp_idx, even though they do
-            # match something in treeIndex. This arises because fp_idx can have repeated items (treeIndex cannot),
-            # which simply means objects that have come from the same progenitor.
 
             # These guys not always match, sometimes treeCommon has
             print(treeCommon.shape, fp_index.shape)
@@ -335,9 +331,9 @@ class tree:
 
         self.sub_tree_prop['d_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        for s in range(self.snap_0-15):
+        for s in range(0, 80, 10):
             print("Doing Snapshot {:d}".format(self.snap_0-s))
-            pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s]) )
+            pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 
             tr_q, tr_value, tr_mask = pbm._define_tracers(tracer_q=lag_pos[self.snap_0-s-1,...])
             self.sub_tree_prop['d_bias'][self.snap_0-s-1,...] = D_model.bias_per_object(tr_value)
@@ -371,9 +367,9 @@ class tree:
 
         self.sub_tree_prop['IA_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        for s in range(self.snap_0-15):
+        for s in range(0, 80, 10):
             print("Doing Snapshot {:d}".format(self.snap_0-s))
-            pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s]) )
+            pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 
             tr_q, tr_value, tr_mask = pbm._define_tracers(tracer_q=lag_pos[self.snap_0-s-1,...])
             shape_tensor = bacco.utils.I_to_S(self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,...])
