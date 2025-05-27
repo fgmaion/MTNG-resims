@@ -211,6 +211,7 @@ class tree:
         self.sub_tree_prop['SubhaloMass'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
         self.sub_tree_prop['SubhaloIsCen'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=int )
         self.sub_tree_prop['SubhaloMassType'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
+        self.sub_tree_prop['SubhaloSpinType'] = np.zeros( (self.snap_0, len(self.sub_tree_index), 18) )
         self.sub_tree_prop['SubhaloIDMostbound'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=np.uint64 )
         self.sub_tree_prop['SubhaloPos'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
         self.sub_tree_prop['SubhaloIntertiaTensorStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
@@ -219,7 +220,7 @@ class tree:
 
         # loading all data
         print("Starting to load data")
-        for s in range(0, 170, 10): 
+        for s in range(0, 260, 10): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
@@ -261,6 +262,7 @@ class tree:
             _mass = np.empty(total_Nsub)
             _is_cen = np.zeros(total_Nsub)
             _mass_type = np.empty((total_Nsub, 6))
+            _spin_type = np.empty((total_Nsub, 18))
             _id_mostbound = np.empty(total_Nsub, dtype=np.uint64)
             _pos = np.empty((total_Nsub, 3))
             _intertia_tensor = np.empty((total_Nsub, 6))
@@ -283,6 +285,7 @@ class tree:
 #                    sel                                       = f['Group']['GroupFirstSub'][...] < total_Nsub
                     _is_cen[f['Group']['GroupFirstSub']] = np.ones(len(f['Group']['GroupFirstSub']))
                     _mass_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloMassType']
+                    _spin_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloSpinType']
                     _id_mostbound[cumsub:cumsub+nsub]      = f['Subhalo']['SubhaloIDMostbound']
                     _pos[cumsub:cumsub+nsub,:]             = f['Subhalo']['SubhaloPos']
                     _intertia_tensor[cumsub:cumsub+nsub,:] = f['Subhalo']['SubhaloIntertiaTensorStars']
@@ -296,6 +299,7 @@ class tree:
             self.sub_tree_prop['SubhaloMass'][self.snap_0-s-1,treeCommon] = _mass[fileCommon]
             self.sub_tree_prop['SubhaloIsCen'][self.snap_0-s-1,treeCommon] = _is_cen[fileCommon]
             self.sub_tree_prop['SubhaloMassType'][self.snap_0-s-1,treeCommon,...] = _mass_type[fileCommon,...]
+            self.sub_tree_prop['SubhaloSpinType'][self.snap_0-s-1,treeCommon,...] = _spin_type[fileCommon,...]
             self.sub_tree_prop['SubhaloIDMostbound'][self.snap_0-s-1,treeCommon] = _id_mostbound[fileCommon]
             self.sub_tree_prop['SubhaloPos'][self.snap_0-s-1,treeCommon,...] = _pos[fileCommon,...]
             self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,treeCommon,...] = _intertia_tensor[fileCommon,...]
@@ -331,7 +335,7 @@ class tree:
 
         self.sub_tree_prop['d_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        for s in range(0, 80, 10):
+        for s in range(0, 260, 10):
             print("Doing Snapshot {:d}".format(self.snap_0-s))
             pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 
@@ -367,7 +371,7 @@ class tree:
 
         self.sub_tree_prop['IA_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        for s in range(0, 80, 10):
+        for s in range(0, 260, 10):
             print("Doing Snapshot {:d}".format(self.snap_0-s))
             pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 

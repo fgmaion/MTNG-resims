@@ -131,7 +131,8 @@ class split_halos():
         hist       = np.zeros(nbins-1)
         mstar_mean = np.zeros(nbins-1)
 
-        mstar = self.sim.sub['MassType'][:,4] * 1e10 / self.sim.Cosmology.pars['hubble']
+        sel = np.log10(1e10 * self.sim.fof['halo_m200b'][self.sim.sub['parent_halo']['index']]) > 11
+        mstar = self.sim.sub['MassType'][sel,4] * 1e10 / self.sim.Cosmology.pars['hubble']
         ids = np.digitize(mstar, bins)
 
         hist = np.array( [np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))] )
@@ -142,7 +143,7 @@ class split_halos():
 
         return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / hist}
 
-    def halo_smf(self, sel_mask=None, nbins=100, draws=1):
+    def halo_smf_draws(self, sel_mask=None, nbins=100, draws=1):
         '''
         Function to get the stellar mass function of a selection, binned as a function of halo masses
         
@@ -150,12 +151,8 @@ class split_halos():
         ----------
         sel_mask: dict
             dictionary containing the selection masks
-        mhalo_edges: array
-            array of halo mass edges of the bins
         nbins: int
             number of bins in log(mhalo)
-        Nhalos: int or None
-            number of halos to sample per bin
         draws: int
             number of selections contained in sel_mask
         
@@ -165,12 +162,11 @@ class split_halos():
             dictionary containing the stellar mass function, bin edges and mean stellar mass per halo
         '''
         
-        bins = np.logspace(8, 13, nbins)
+        bins = np.logspace(9.5, 12, nbins)
         counts     = {d:np.zeros(nbins-1) for d in range(draws)}
         hist       = {d:np.zeros(nbins-1) for d in range(draws)}
         mstar_mean = {d:np.zeros(nbins-1) for d in range(draws)}
 
-#        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
         first = self.sim.fof['halo_firstsub']#[presel]
         nsubs = self.sim.fof['halo_nsubs']#[presel]
 
@@ -199,12 +195,68 @@ class split_halos():
 
         return  {'smf':hist, 'bins':bins, 'mstar':mstar_mean}
 
+    def halo_smf(self, Nhalos, h_frac, tree=None, nbins=100, snap=264):
+        '''
+        Function to get the stellar mass function of a selection, binned as a function of halo masses
+        
+        Parameters
+        ----------
+        Nhalos: int
+            number of halos in the selection
+        h_frac: array
+            array containing the halo fractions
+        tree: tree object
+            tree object
+        nbins: int
+            number of bins in log(mhalo)
+        snap: int
+            snapshot number
+        
+        Returns
+        -------
+        dict:
+            dictionary containing the stellar mass function, bin edges and mean stellar mass per halo
+        '''
+        
+        bins = np.logspace(8, 13, nbins)
+        counts     = np.zeros(nbins-1)
+        hist       = np.zeros(nbins-1)
+        mstar_mean = np.zeros(nbins-1)
+
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
+
+        for m in range(Nhalos):
+            mstar = []
+ 
+            all_parents = np.unique(tree.group_nr[m][tree.all_idx[m][snap]])
+        
+            for j in range(len(all_parents)):
+                mstar.extend(self.sim.sub['MassType'][:,4][first[all_parents[j]]:first[all_parents[j]]+nsubs[all_parents[j]]] / self.sim.Cosmology.pars['hubble'])
+            
+            mstar = 1e10 * np.array(mstar)
+
+            ids = np.digitize(mstar, bins)
+            counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]
+
+            counts += counts_i
+            hist   += np.array(counts_i) / h_frac[m]
+            mstar_mean += [np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]
+
+        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+        norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
+
+        hist *= norm
+        mstar_mean = mstar_mean / counts
+
+        return  {'smf':hist, 'bins':bins, 'mstar':mstar_mean}
+
     def halo_gas_frac(self, sel_mask=None, draws=1, nbins=100):
         '''
             Function to get the fraction of gas in a selection, binned as a function of halo masses
         '''
 
-        bins = np.logspace(10, 14, nbins)
+        bins = np.logspace(13, 14, nbins)
 
         _m500c = 1e10 * self.sim.fof['halo_m500c']
         _main_sub = self.sim.fof['halo_firstsub']
@@ -498,7 +550,57 @@ def cross_match(zoom, snap, name=None):
     else:
         return {name: {'ind':xmatch, 'd':dmatch}}
 
-        
+def cross_match_zooms(zoom1, zoom2):
+    '''
+    Cross-match two catalogs of halos based on their position and properties.
+    Parameters
+    ----------
+    zoom1 : bacco.Simulation
+        First zoom
+    zoom2: bacco.Simulation
+        Second zoom
+
+    Returns
+    -------
+    dict
+        A dictionary with the following keys:
+        - ind: the index of the matched halo in the zoom simulation
+        - d: the distance between the matched halos
+    '''
+
+    import numpy.ma as ma
+    import scipy
+
+    sel = np.where(zoom1.fof['halo_m200b']>0)[0]
+
+    # position matching
+    X1 = zoom1.fof['halo_pos'][sel]
+    X2 = zoom2.fof['halo_pos']
+
+    kdt = scipy.spatial.KDTree(X1, boxsize=zoom1.header['BoxSize'])
+    dist, ind = kdt.query(X2, k=100)
+
+    # load halo properties
+    M1 = 1e10 * zoom1.fof['halo_m200b'][sel][ind]
+    M2 = 1e10 * zoom2.fof['halo_m200b']
+
+    pos1 = np.transpose(zoom1.fof['halo_pos'][sel][ind], (2,0,1))
+    pos2 = np.transpose(zoom2.fof['halo_pos'].T)
+
+    vmax_1 = zoom1.sub['vmax'][zoom1.fof['halo_firstsub'][sel][ind]]
+    vmax_2 = zoom2.sub['vmax'][zoom2.fof['halo_firstsub']]
+
+    d = metric(M2,M1,vmax_2,vmax_1,dist,5,1,1)
+
+    xmatch = np.zeros(len(M1), dtype=int)
+    dmatch = np.zeros(len(M1))
+    metr = np.zeros(len(M1))
+
+    for i in range(len(M1)):
+        metr[i] = d[i].min()
+        xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
+        dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
+    return {'ind':xmatch, 'd':dmatch}
 
 def read_cpu(filename=None, skiprows=[]):
     with open(filename) as f:
@@ -717,19 +819,20 @@ def read_central_xmatch(sim_name):
     dy = []
     dz = []
 
-    with open("/lscratch/kwalsen/xmatch/"+sim_name+"/selection_xmatch_deltas.csv", 'r') as f:
+    with open("/lscratch/kwalsen/xmatch/264/"+sim_name+"/selection_xmatch_deltas.csv", 'r') as f:
         for i, line in enumerate(f.readlines()):
             if i==0:
                 continue
             line = line.strip('\n').split(',')
+            mtng_id.append(int(line[1]))
+
             try:
-                mtng_id.append(int(line[1]))
                 zoom_id.append(int(line[2]))
                 dx.append(float(line[3]))
                 dy.append(float(line[4]))
                 dz.append(float(line[5]))
             except:
-                mtng_id.append(int(line[1]))
+                zoom_id.append(-1)
                 dx.append(0)
                 dy.append(0)
                 dz.append(0)
@@ -747,44 +850,59 @@ def metric(m1,m2,v1,v2,dist,a,b,c):
 
     return dist*a + d_m*b + d_v*c
 
-def cross_match(zoom, mtng, sel, shift=None):
+def pars(i, mstar):
 
-    from scipy.spatial import KDTree
+    arr = np.vstack( (mstar, np.ones(len(mstar)) * wind_en[i],\
+                        np.ones(len(mstar)) * wind_vel[i],\
+                        np.ones(len(mstar)) * rho_rec[i],\
+                        np.ones(len(mstar)) * sf_ts[i],\
+                        np.ones(len(mstar)) * ef_kin[i],\
+                        np.ones(len(mstar)) * ef_high[i],\
+                        np.ones(len(mstar)) * f_re[i])).T
 
-    # Build kdtree with 100 NN
-    psel = np.where(zoom.fof['halo_m200b']>0)[0]
+    return arr
 
-    X1 = zoom.fof['halo_pos'][psel]
-    X2 = mtng.fof['halo_pos'][sel]
+def get_zoom_smf(zoom):
 
-    if shift is not None:
-        X2 -= shift
+    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/MTNG/", snap=264)
+    mtng.fof['halo_pos'][:,0] = ( mtng.fof['halo_pos'][:,0] - 125 ) % 500
 
-    kdt = KDTree(X1, boxsize=500)
-    dist, ind = kdt.query(X2, k=100)
+    sigma8 = 0.8159 #CHECK ME
+    ns     = 0.9667 #CHECK ME
+    tau    = 0.0965 #CHECK ME
+    
+    snap = 264
+    zoom = {}
+    
+    name_list = ['fiducial', 'LH_2', 'LH_4', 'LH_8', 'LH_12', 'LH_13', 'LH_14', 'LH_17', 'LH_18', 'LH_19', 'LH_20', 'LH_21', 'LH_22', 'LH_23', 'LH_24']
+    
+    for i in range(len(name_list)):
+    
+        base = "/cosmos_storage/data_sharing/MN5_resims/"+name_list[i]+"/hydro_output/"
+        zoom[name_list[i]] = bacco.Simulation(basedir=base, halo_file="groups_{:03d}/fof_subhalo_tab_{:03d}".format(snap,snap), dm_file="snapdir_{:03d}/snapshot_{:03d}".format(snap,snap), sim_format='TNG500', fixedPk=True, use_orphans=False,\
+                                tau=tau, ns=ns, sigma8=sigma8, tree_file="groups_{:03d}/subhalo_prog_{:03d}".format(snap,snap), use_ids=True)
+    
+    print(zoom['LH_2'].header['Redshift'])
 
-    ind[np.where(dist==np.inf)] = -1
+    xmatch = {}
+    
+    for i in range(len(name_list)):
+        xmatch[name_list[i]] = utils.cross_match(zoom[name_list[i]], snap=264)
 
-    # Get properties of the 100 NN
-    M1 = 1e10 * zoom.fof['halo_m200b'][psel][ind]
-    M2 = 1e10 * mtng.fof['halo_m200b'][sel]
+    m200b = np.log10(1e10 * mtng.fof['halo_m200b'])
+    
+    h_frac = np.zeros(len(final_sel))
+    for m in range(len(mbins)-1):
+        h_frac[m] = np.where(( m200b[final_sel]>=mbins[m]) & ( m200b[final_sel]<mbins[m+1]))[0].shape[0] / \
+                 np.where(( m200b>=mbins[m]) & ( m200b<mbins[m+1]))[0].shape[0]
 
-    pos1 = np.transpose(zoom.fof['halo_pos'][psel][ind], (2,0,1))
-    pos2 = mtng.fof['halo_pos'][sel].T
+    zoom_split = utils.split_halos(zoom)
 
-    vmax_1 = zoom.sub['vmax'][zoom.fof['halo_firstsub'][psel][ind]]
-    vmax_2 = mtng.sub['vmax'][mtng.fof['halo_firstsub'][sel]]
+    zoom_sel = {}
+    zoom_sel['sel'] = xmatch['ind'][:,np.newaxis,np.newaxis]
+    zoom_sel['h_frac'] = h_frac[np.newaxis, :]
 
-    # Compute cross-matching
-    d = metric(M2,M1,vmax_2,vmax_1,dist,100,1,1)
+    zoom_smf = zoom_split.halo_smf_draws(sel_mask=zoom_sel, nbins=Nbins, draws=1)
 
-    xmatch = np.zeros(len(M1), dtype=int)
-    dmatch = np.zeros(len(M1))
-    metr = np.zeros(len(M1))
 
-    for i in range(len(M1)):
-        metr[i] = d[i].min()
-        xmatch[i] = ind[i,np.where(d[i]==d[i].min())[0][0]]
-        dmatch[i] = dist[i,np.where(d[i]==d[i].min())[0][0]]
 
-    return {'xm':xmatch, 'dm':dmatch, 'metric':metr}
