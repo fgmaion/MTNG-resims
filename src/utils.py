@@ -507,7 +507,7 @@ def cross_match(zoom, snap, name=None):
     import scipy
 
     # Load MTNG
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/MTNG/", snap=snap)
+    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
     mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
     mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
 
@@ -862,47 +862,44 @@ def pars(i, mstar):
 
     return arr
 
-def get_zoom_smf(zoom):
+def get_zoom_smf(zoom, snap=264, Nbins=50):
 
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/MTNG/", snap=264)
+    # BE CAREFUL. Right now this works for snap=264, but I am not sure if it would work for other redshifts
+    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=264)
     mtng.fof['halo_pos'][:,0] = ( mtng.fof['halo_pos'][:,0] - 125 ) % 500
-
-    sigma8 = 0.8159 #CHECK ME
-    ns     = 0.9667 #CHECK ME
-    tau    = 0.0965 #CHECK ME
     
-    snap = 264
-    zoom = {}
-    
-    name_list = ['fiducial', 'LH_2', 'LH_4', 'LH_8', 'LH_12', 'LH_13', 'LH_14', 'LH_17', 'LH_18', 'LH_19', 'LH_20', 'LH_21', 'LH_22', 'LH_23', 'LH_24']
-    
-    for i in range(len(name_list)):
-    
-        base = "/cosmos_storage/data_sharing/MN5_resims/"+name_list[i]+"/hydro_output/"
-        zoom[name_list[i]] = bacco.Simulation(basedir=base, halo_file="groups_{:03d}/fof_subhalo_tab_{:03d}".format(snap,snap), dm_file="snapdir_{:03d}/snapshot_{:03d}".format(snap,snap), sim_format='TNG500', fixedPk=True, use_orphans=False,\
-                                tau=tau, ns=ns, sigma8=sigma8, tree_file="groups_{:03d}/subhalo_prog_{:03d}".format(snap,snap), use_ids=True)
-    
-    print(zoom['LH_2'].header['Redshift'])
-
-    xmatch = {}
-    
-    for i in range(len(name_list)):
-        xmatch[name_list[i]] = utils.cross_match(zoom[name_list[i]], snap=264)
+    xmatch = cross_match(zoom, snap=264)
 
     m200b = np.log10(1e10 * mtng.fof['halo_m200b'])
     
+    # load the halo-selection in the fiducial MTNG
+    with open("/lscratch/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+        final_sel = []
+        for line in f.readlines():
+            final_sel.append(int(line.split()[0]))
+    final_sel = np.array(final_sel)
+
+    mbins = np.concatenate(
+        (np.arange(11, 11.5, 0.0025),
+        np.arange(11.5, 12.5, 0.005),
+        np.arange(12.5, 13.5, 0.025),
+        np.arange(13.5, 15.01, 0.125))
+    )
+
     h_frac = np.zeros(len(final_sel))
     for m in range(len(mbins)-1):
         h_frac[m] = np.where(( m200b[final_sel]>=mbins[m]) & ( m200b[final_sel]<mbins[m+1]))[0].shape[0] / \
                  np.where(( m200b>=mbins[m]) & ( m200b<mbins[m+1]))[0].shape[0]
 
-    zoom_split = utils.split_halos(zoom)
+    zoom_split = split_halos(zoom)
 
     zoom_sel = {}
     zoom_sel['sel'] = xmatch['ind'][:,np.newaxis,np.newaxis]
     zoom_sel['h_frac'] = h_frac[np.newaxis, :]
 
     zoom_smf = zoom_split.halo_smf_draws(sel_mask=zoom_sel, nbins=Nbins, draws=1)
+
+    return zoom_smf
 
 
 
