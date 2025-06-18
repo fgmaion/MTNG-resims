@@ -217,6 +217,7 @@ class tree:
         self.sub_tree_prop['SubhaloIntertiaTensorStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
         self.sub_tree_prop['SubhaloRotationalEnergyStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
         self.sub_tree_prop['SubhaloSFR'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        self.sub_tree_prop['SubhaloSfrInHalfRad'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
 
         # loading all data
         print("Starting to load data")
@@ -268,6 +269,7 @@ class tree:
             _intertia_tensor = np.empty((total_Nsub, 6))
             _rotational_energy = np.empty(total_Nsub)
             _sfr = np.empty(total_Nsub)
+            _sfr_half_rad = np.empty(total_Nsub)
 
             cumsub = 0
             for i in range(640):
@@ -291,6 +293,7 @@ class tree:
                     _intertia_tensor[cumsub:cumsub+nsub,:] = f['Subhalo']['SubhaloIntertiaTensorStars']
                     _rotational_energy[cumsub:cumsub+nsub] = f['Subhalo']['SubhaloRotationalEnergyStars']
                     _sfr[cumsub:cumsub+nsub]               = f['Subhalo']['SubhaloSFR']
+                    _sfr_half_rad[cumsub:cumsub+nsub]      = f['Subhalo']['SubhaloSfrInHalfRad']
 
                 cumsub += nsub
             ################# DONE WITH THIS SNAPSHOT  ###################
@@ -305,6 +308,7 @@ class tree:
             self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,treeCommon,...] = _intertia_tensor[fileCommon,...]
             self.sub_tree_prop['SubhaloRotationalEnergyStars'][self.snap_0-s-1,treeCommon] = _rotational_energy[fileCommon]
             self.sub_tree_prop['SubhaloSFR'][self.snap_0-s-1,treeCommon] = _sfr[fileCommon]
+            self.sub_tree_prop['SubhaloSfrInHalfRad'][self.snap_0-s-1,treeCommon] = _sfr[fileCommon]
 
     def get_d_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False):
         '''
@@ -319,7 +323,7 @@ class tree:
         lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
         # load the mtng-mimic simulation at very early stages
-        dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG/MTNG-mimic/output/"
+        dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
 
         dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
                             ngenic_phases=True, phase_type=2, fixedPk=True)
@@ -355,7 +359,7 @@ class tree:
         lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
         # load the mtng-mimic simulation at very early stages
-        dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG/MTNG-mimic/output/"
+        dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
 
         dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
                             ngenic_phases=True, phase_type=2, fixedPk=True)
