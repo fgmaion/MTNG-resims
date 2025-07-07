@@ -117,6 +117,8 @@ class tree:
         
         self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int64)
         self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
+        self.sub_firstprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin", dtype=np.int64)
+        self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
 
 
     def walk_subs(self):
@@ -211,7 +213,7 @@ class tree:
         self.sub_tree_prop['SubhaloMass'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
         self.sub_tree_prop['SubhaloIsCen'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=int )
         self.sub_tree_prop['SubhaloMassType'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
-        self.sub_tree_prop['SubhaloSpinType'] = np.zeros( (self.snap_0, len(self.sub_tree_index), 18) )
+        #self.sub_tree_prop['SubhaloSpinType'] = np.zeros( (self.snap_0, len(self.sub_tree_index), 18) )
         self.sub_tree_prop['SubhaloIDMostbound'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=np.uint64 )
         self.sub_tree_prop['SubhaloPos'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
         self.sub_tree_prop['SubhaloIntertiaTensorStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
@@ -221,7 +223,7 @@ class tree:
 
         # loading all data
         print("Starting to load data")
-        for s in range(0, 260, 10): 
+        for s in range(0, 9, 10): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
@@ -248,7 +250,7 @@ class tree:
                     treeCommon = np.append( treeCommon, w_i[j] )
 
 
-            # These guys not always match, sometimes treeCommon has
+            # These guys not always match, sometimes treeCommon has less elements
             print(treeCommon.shape, fp_index.shape)
 
             
@@ -287,7 +289,7 @@ class tree:
 #                    sel                                       = f['Group']['GroupFirstSub'][...] < total_Nsub
                     _is_cen[f['Group']['GroupFirstSub']] = np.ones(len(f['Group']['GroupFirstSub']))
                     _mass_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloMassType']
-                    _spin_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloSpinType']
+#                    _spin_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloSpinType']
                     _id_mostbound[cumsub:cumsub+nsub]      = f['Subhalo']['SubhaloIDMostbound']
                     _pos[cumsub:cumsub+nsub,:]             = f['Subhalo']['SubhaloPos']
                     _intertia_tensor[cumsub:cumsub+nsub,:] = f['Subhalo']['SubhaloIntertiaTensorStars']
@@ -302,7 +304,7 @@ class tree:
             self.sub_tree_prop['SubhaloMass'][self.snap_0-s-1,treeCommon] = _mass[fileCommon]
             self.sub_tree_prop['SubhaloIsCen'][self.snap_0-s-1,treeCommon] = _is_cen[fileCommon]
             self.sub_tree_prop['SubhaloMassType'][self.snap_0-s-1,treeCommon,...] = _mass_type[fileCommon,...]
-            self.sub_tree_prop['SubhaloSpinType'][self.snap_0-s-1,treeCommon,...] = _spin_type[fileCommon,...]
+#            self.sub_tree_prop['SubhaloSpinType'][self.snap_0-s-1,treeCommon,...] = _spin_type[fileCommon,...]
             self.sub_tree_prop['SubhaloIDMostbound'][self.snap_0-s-1,treeCommon] = _id_mostbound[fileCommon]
             self.sub_tree_prop['SubhaloPos'][self.snap_0-s-1,treeCommon,...] = _pos[fileCommon,...]
             self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,treeCommon,...] = _intertia_tensor[fileCommon,...]
@@ -410,7 +412,48 @@ class tree:
                             Np = self.nextprog[ii][Np]
 
                 roots = self.all_idx[ii][snap]
-                    
+
+    def get_mp_secondary_progenitors(self, snap_0):
+
+        print("Reading tree")
+        # Read the tree
+        try:
+            self.tree_offsets
+            self.sub_mainprog
+            self.sub_nextprog
+            self.sub_firstprog
+        except:
+            self.read_tree_opt()
+
+        # Get tree-relative ID and index of subhalos at Snap_0
+        try:
+            self.sub_tree_ID
+            self.sub_tree_index
+        except:
+            self.get_sub_tree_props()
+
+        sec_prog = {}
+        # For loop over all the possible halos at a certain snapshot
+        for ii in range(len(self.sub_tree_index)):
+            print('Done for halo {:d}'.format(ii), end='\r')
+#            sec_prog[ii] = {}
+            sec_prog.setdefault(ii, {})
+            
+            snap_i = 0
+            fp = self.sub_firstprog[self.sub_tree_index[ii] + self.tree_offsets[self.sub_tree_ID[ii]]]
+            while fp!=-1:
+#                sec_prog[ii][snap_i] = []
+#                sec_prog[ii][snap_i].append(fp + self.tree_offsets[self.sub_tree_ID[ii]])
+                sec_prog[ii].setdefault(snap_i, []).append(fp + self.tree_offsets[self.sub_tree_ID[ii]])
+                Np = self.sub_nextprog[fp + self.tree_offsets[self.sub_tree_ID[ii]]]
+                while Np != -1:
+                    #sec_prog[ii][snap_i].append(Np + self.tree_offsets[self.sub_tree_ID[ii]])
+                    sec_prog[ii].setdefault(snap_i, []).append(Np + self.tree_offsets[self.sub_tree_ID[ii]])
+                    Np = self.sub_nextprog[Np + self.tree_offsets[self.sub_tree_ID[ii]]]
+                fp = self.sub_firstprog[fp + self.tree_offsets[self.sub_tree_ID[ii]]]
+                snap_i += 1
+
+        return sec_prog
 
     def load_tree_prop(self, field, N):
         '''
