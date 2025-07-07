@@ -3,6 +3,7 @@ import numpy as np
 import h5py
 import functools
 import bacco
+import copy
 
 def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
     
@@ -413,6 +414,7 @@ class tree:
 
                 roots = self.all_idx[ii][snap]
 
+    # TODO: double check the functioning of this function
     def get_mp_secondary_progenitors(self, snap_0):
 
         print("Reading tree")
@@ -432,28 +434,116 @@ class tree:
         except:
             self.get_sub_tree_props()
 
-        sec_prog = {}
         # For loop over all the possible halos at a certain snapshot
+        print("Starting the Loop")
+        self.sec_prog = {}
         for ii in range(len(self.sub_tree_index)):
             print('Done for halo {:d}'.format(ii), end='\r')
-#            sec_prog[ii] = {}
-            sec_prog.setdefault(ii, {})
             
             snap_i = 0
-            fp = self.sub_firstprog[self.sub_tree_index[ii] + self.tree_offsets[self.sub_tree_ID[ii]]]
-            while fp!=-1:
-#                sec_prog[ii][snap_i] = []
-#                sec_prog[ii][snap_i].append(fp + self.tree_offsets[self.sub_tree_ID[ii]])
-                sec_prog[ii].setdefault(snap_i, []).append(fp + self.tree_offsets[self.sub_tree_ID[ii]])
-                Np = self.sub_nextprog[fp + self.tree_offsets[self.sub_tree_ID[ii]]]
-                while Np != -1:
-                    #sec_prog[ii][snap_i].append(Np + self.tree_offsets[self.sub_tree_ID[ii]])
-                    sec_prog[ii].setdefault(snap_i, []).append(Np + self.tree_offsets[self.sub_tree_ID[ii]])
-                    Np = self.sub_nextprog[Np + self.tree_offsets[self.sub_tree_ID[ii]]]
-                fp = self.sub_firstprog[fp + self.tree_offsets[self.sub_tree_ID[ii]]]
+            roots = [ self.sub_tree_index[ii] ]
+            while snap_i<10:
+                new_roots = []
+                for i in range(len(roots)):
+                    Np = self.sub_firstprog[roots[i] + self.tree_offsets[self.sub_tree_ID[ii]]]
+                    while Np != -1:
+                        new_roots.append( Np )
+                        Np = self.sub_nextprog[Np + self.tree_offsets[self.sub_tree_ID[ii]]]
+
+                roots = copy.deepcopy(new_roots)
                 snap_i += 1
 
-        return sec_prog
+            self.sec_prog[ii] = new_roots
+
+        return None
+
+    def get_secprog_props(self):
+        '''
+            This function is responsible for getting the file-pertinent information
+            for the secondary progenitors of subhalos
+        '''
+        
+        # Get tree-relative ID and index of subhalos at Snap_0
+        try:
+            self.sub_tree_ID
+            self.sub_tree_index
+        except:
+            self.get_sub_tree_props()
+
+        print("Reading tree")
+        # Read the tree
+        try:
+            self.tree_offsets
+            self.sub_mainprog
+        except:
+            self.read_tree_opt()
+        print("Done reading tree")
+        
+        print("Walking Tree (Secondary Progenitors Included)")
+        # Walk the tree
+        try:
+            self.sec_prog
+        except:
+            self.get_mp_secondary_progenitors(self.snap_0)
+        print("Done Walking Tree (Secondary Progenitors Included)")
+
+        # loading all data
+        print("Starting to load data")
+        for s in range(0, 9, 10): 
+            print("Getting the tree-relevant IDs and Indexes of subhalos in snapshot")
+            treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s-10)
+
+            # get all the interesting properties stored in the group-files, for all available snapshots
+            ################ READING SINGLE-FILES ###################
+            total_Nsub = int(0)
+            for i in range(640):
+                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s-10), end='\r')
+                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s-10,self.snap_0-s-10,i), 'r') as f:
+                    total_Nsub += int(f['Header'].attrs['Nsubhalos_ThisFile'])
+
+            _mass = np.empty(total_Nsub)
+            _mass_type = np.empty((total_Nsub, 6))
+            _pos = np.empty((total_Nsub, 3))
+
+            cumsub = 0
+            for i in range(640):
+                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s-10), end='\r')
+
+                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s-10,self.snap_0-s-10,i), 'r') as f:
+                    nsub = int(f['Header'].attrs['Nsubhalos_ThisFile'])
+
+                    try:
+                        f['Subhalo']['SubhaloMass']
+                    except:
+                        continue
+
+                    _mass[cumsub:cumsub+nsub]              = f['Subhalo']['SubhaloMass']
+                    _mass_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloMassType']
+                    _pos[cumsub:cumsub+nsub,:]             = f['Subhalo']['SubhaloPos']
+
+                cumsub += nsub
+            ################# DONE WITH THIS SNAPSHOT  ###################
+            print("Done with snap {:d}".format(s))
+
+            self.sub_secprog_prop = {}
+            self.sub_secprog_prop['SubhaloMass'] = {}
+            self.sub_secprog_prop['SubhaloMassType'] = {}
+
+            # TODO: Having some kind of problem here where python is transforming these data into float64
+            fp_index = [self.sec_prog[ii] for ii in range(10000)]
+
+            a = np.concatenate(fp_index, dtype=np.int64)
+            m = np.isin(a,treeIndex)
+            l = np.array(list(map(len,fp_index)))
+            a_m = a[m]
+            cut_idx = np.r_[0,l.cumsum()]
+            l_m = np.add.reduceat(m,cut_idx[:-1])
+            cl_m = np.r_[0,l_m.cumsum()]
+            self.out = [a_m[i:j] for (i,j) in zip(cl_m[:-1],cl_m[1:])]
+
+            for ii in range(10000):
+                self.sub_secprog_prop['SubhaloMass'][ii] = _mass[self.out[ii]]
+                self.sub_secprog_prop['SubhaloMassType'][ii] = _mass_type[self.out[ii],...]
 
     def load_tree_prop(self, field, N):
         '''
