@@ -436,24 +436,25 @@ class tree:
 
         # For loop over all the possible halos at a certain snapshot
         print("Starting the Loop")
-        self.sec_prog = {}
+        self.sec_prog = {264-10*i:{} for i in range(1,26)}
         for ii in range(len(self.sub_tree_index)):
             print('Done for halo {:d}'.format(ii), end='\r')
             
-            snap_i = 0
+            snap_i = snap_0
             roots = [ self.sub_tree_index[ii] ]
-            while snap_i<10:
+            while snap_i > 14:
                 new_roots = []
                 for i in range(len(roots)):
                     Np = self.sub_firstprog[roots[i] + self.tree_offsets[self.sub_tree_ID[ii]]]
                     while Np != -1:
-                        new_roots.append( Np )
+                        new_roots.append( np.int64(Np) )
                         Np = self.sub_nextprog[Np + self.tree_offsets[self.sub_tree_ID[ii]]]
 
                 roots = copy.deepcopy(new_roots)
-                snap_i += 1
+                snap_i -= 1
 
-            self.sec_prog[ii] = new_roots
+                if (snap_0 - snap_i)%10==0:
+                    self.sec_prog[snap_i][ii] = new_roots
 
         return None
 
@@ -529,19 +530,30 @@ class tree:
             self.sub_secprog_prop['SubhaloMass'] = {}
             self.sub_secprog_prop['SubhaloMassType'] = {}
 
-            # TODO: Having some kind of problem here where python is transforming these data into float64
-            fp_index = [self.sec_prog[ii] for ii in range(10000)]
+            # Map values to their positions in treeIndex
+            treeIndex = np.array(treeIndex)
+            val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
 
-            a = np.concatenate(fp_index, dtype=np.int64)
-            m = np.isin(a,treeIndex)
-            l = np.array(list(map(len,fp_index)))
-            a_m = a[m]
-            cut_idx = np.r_[0,l.cumsum()]
-            l_m = np.add.reduceat(m,cut_idx[:-1])
-            cl_m = np.r_[0,l_m.cumsum()]
-            self.out = [a_m[i:j] for (i,j) in zip(cl_m[:-1],cl_m[1:])]
+            # Flatten the progenitor list
+            sp_index = [np.array(self.sec_prog[ii], dtype=int) for ii in range(len(self.sub_tree_index))]
+            sp_1d = np.concatenate(sp_index)
 
-            for ii in range(10000):
+            # Create mask and array of positions in treeIndex
+            mask = np.isin(sp_1d, treeIndex)
+            positions = np.array([val_to_idx[val] for val in sp_1d[mask]])
+
+            # Lengths of original arrays
+            len_array = np.array([len(x) for x in sp_index])
+            cut_idx = np.r_[0, len_array.cumsum()]
+
+            # Count how many were kept in each chunk
+            len_mask = np.add.reduceat(mask, cut_idx[:-1])
+            cl_m = np.r_[0, len_mask.cumsum()]
+
+            # Rebuild output with treeIndex positions instead of values
+            self.out = [positions[i:j] for i, j in zip(cl_m[:-1], cl_m[1:])]
+
+            for ii in range(len(self.sub_tree_index)):
                 self.sub_secprog_prop['SubhaloMass'][ii] = _mass[self.out[ii]]
                 self.sub_secprog_prop['SubhaloMassType'][ii] = _mass_type[self.out[ii],...]
 
