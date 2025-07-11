@@ -438,6 +438,7 @@ class tree:
         print("Starting the Loop")
         self.sec_prog = {264-10*i:{} for i in range(1,26)}
         for ii in range(len(self.sub_tree_index)):
+            tree_offset = self.tree_offsets[self.sub_tree_ID[ii]]
             print('Done for halo {:d}'.format(ii), end='\r')
             
             snap_i = snap_0
@@ -445,12 +446,12 @@ class tree:
             while snap_i > 14:
                 new_roots = []
                 for i in range(len(roots)):
-                    Np = self.sub_firstprog[roots[i] + self.tree_offsets[self.sub_tree_ID[ii]]]
+                    Np = self.sub_firstprog[roots[i] + tree_offset]
                     while Np != -1:
                         new_roots.append( np.int64(Np) )
-                        Np = self.sub_nextprog[Np + self.tree_offsets[self.sub_tree_ID[ii]]]
+                        Np = self.sub_nextprog[Np + tree_offset]
 
-                roots = copy.deepcopy(new_roots)
+                roots = new_roots
                 snap_i -= 1
 
                 if (snap_0 - snap_i)%10==0:
