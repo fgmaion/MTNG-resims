@@ -224,7 +224,7 @@ class tree:
 
         # loading all data
         print("Starting to load data")
-        for s in range(0, 9, 10): 
+        for s in range(0, 19, 10): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
@@ -436,7 +436,7 @@ class tree:
 
         # For loop over all the possible halos at a certain snapshot
         print("Starting the Loop")
-        self.sec_prog = {264-10*i:{} for i in range(1,26)}
+        self.sec_prog = {snap_0-1-10*i:{} for i in range(1,26)}
         for ii in range(len(self.sub_tree_index)):
             tree_offset = self.tree_offsets[self.sub_tree_ID[ii]]
             print('Done for halo {:d}'.format(ii), end='\r')
@@ -454,8 +454,8 @@ class tree:
                 roots = new_roots
                 snap_i -= 1
 
-                if (snap_0 - snap_i)%10==0:
-                    self.sec_prog[snap_i][ii] = new_roots
+                if ( (snap_0 - snap_i)%10==0 ):
+                    self.sec_prog[snap_i-1][ii] = new_roots
 
         return None
 
@@ -489,18 +489,22 @@ class tree:
             self.get_mp_secondary_progenitors(self.snap_0)
         print("Done Walking Tree (Secondary Progenitors Included)")
 
+        self.sub_secprog_prop = {}
+        self.sub_secprog_prop['SubhaloMass'] = {}
+        self.sub_secprog_prop['SubhaloMassType'] = {}
+
         # loading all data
         print("Starting to load data")
-        for s in range(0, 9, 10): 
+        for s in range(10, 29, 10): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in snapshot")
-            treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s-10)
+            treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
             # get all the interesting properties stored in the group-files, for all available snapshots
             ################ READING SINGLE-FILES ###################
             total_Nsub = int(0)
             for i in range(640):
-                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s-10), end='\r')
-                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s-10,self.snap_0-s-10,i), 'r') as f:
+                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s), end='\r')
+                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
                     total_Nsub += int(f['Header'].attrs['Nsubhalos_ThisFile'])
 
             _mass = np.empty(total_Nsub)
@@ -509,9 +513,9 @@ class tree:
 
             cumsub = 0
             for i in range(640):
-                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s-10), end='\r')
+                print("Reading file {:d} of group {:d}".format(i, self.snap_0-s), end='\r')
 
-                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s-10,self.snap_0-s-10,i), 'r') as f:
+                with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
                     nsub = int(f['Header'].attrs['Nsubhalos_ThisFile'])
 
                     try:
@@ -527,16 +531,15 @@ class tree:
             ################# DONE WITH THIS SNAPSHOT  ###################
             print("Done with snap {:d}".format(s))
 
-            self.sub_secprog_prop = {}
-            self.sub_secprog_prop['SubhaloMass'] = {}
-            self.sub_secprog_prop['SubhaloMassType'] = {}
+            self.sub_secprog_prop['SubhaloMass'][264-s-1] = {}
+            self.sub_secprog_prop['SubhaloMassType'][264-s-1] = {}
 
             # Map values to their positions in treeIndex
             treeIndex = np.array(treeIndex)
             val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
 
             # Flatten the progenitor list
-            sp_index = [np.array(self.sec_prog[ii], dtype=int) for ii in range(len(self.sub_tree_index))]
+            sp_index = [np.array(self.sec_prog[264-s-1][ii], dtype=int) for ii in range(len(self.sub_tree_index))]
             sp_1d = np.concatenate(sp_index)
 
             # Create mask and array of positions in treeIndex
@@ -555,8 +558,8 @@ class tree:
             self.out = [positions[i:j] for i, j in zip(cl_m[:-1], cl_m[1:])]
 
             for ii in range(len(self.sub_tree_index)):
-                self.sub_secprog_prop['SubhaloMass'][ii] = _mass[self.out[ii]]
-                self.sub_secprog_prop['SubhaloMassType'][ii] = _mass_type[self.out[ii],...]
+                self.sub_secprog_prop['SubhaloMass'][264-s-1][ii] = _mass[self.out[ii]]
+                self.sub_secprog_prop['SubhaloMassType'][264-s-1][ii] = _mass_type[self.out[ii],...]
 
     def load_tree_prop(self, field, N):
         '''
