@@ -184,7 +184,8 @@ class tree:
             This function is responsible for getting the file-pertinent information
             for the subhalos which we have walked up the tree.
         '''
-        
+        SNAP_INT = 10
+
         # Get tree-relative ID and index of subhalos at Snap_0
         try:
             self.sub_tree_ID
@@ -210,51 +211,24 @@ class tree:
             self.walk_subs()
         print("Done Walking Tree")
 
-        self.sub_tree_prop = {}
-        self.sub_tree_prop['SubhaloMass'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        self.sub_tree_prop['SubhaloIsCen'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=int )
-        self.sub_tree_prop['SubhaloMassType'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
+        self.new_sub_tree_prop = {}
+        self.new_sub_tree_prop['SubhaloMass'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        self.new_sub_tree_prop['SubhaloIsCen'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=int )
+        self.new_sub_tree_prop['SubhaloMassType'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
         #self.sub_tree_prop['SubhaloSpinType'] = np.zeros( (self.snap_0, len(self.sub_tree_index), 18) )
-        self.sub_tree_prop['SubhaloIDMostbound'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=np.uint64 )
-        self.sub_tree_prop['SubhaloPos'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
-        self.sub_tree_prop['SubhaloIntertiaTensorStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
-        self.sub_tree_prop['SubhaloRotationalEnergyStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        self.sub_tree_prop['SubhaloSFR'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        self.sub_tree_prop['SubhaloSfrInHalfRad'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        self.new_sub_tree_prop['SubhaloIDMostbound'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)), dtype=np.uint64 )
+        self.new_sub_tree_prop['SubhaloPos'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
+        self.new_sub_tree_prop['SubhaloIntertiaTensorStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 6) )
+        self.new_sub_tree_prop['SubhaloRotationalEnergyStars'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        self.new_sub_tree_prop['SubhaloSFR'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        self.new_sub_tree_prop['SubhaloSfrInHalfRad'] =  np.zeros( (self.snap_0, len(self.sub_tree_index)) )
 
         # loading all data
         print("Starting to load data")
-        for s in range(0, 19, 10): 
+        for s in range(0, self.snap_0-SNAP_INT, SNAP_INT): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
-            fp_index = self.fp_idx[self.snap_0-s-1,:]
-
-            print("Intersecting indexes of walked subhalos and those at the high-redshift snapshot")
-            _, fileCommon, treeCommon = np.intersect1d( treeIndex, fp_index, return_indices=True)
-            # Now we find the positions of unique and non-unique elements of the tree-indices
-            uni_els, uni_id, counts = np.unique(fp_index, return_index=True, return_counts=True)
-            nuni_id = np.where(counts > 1)[0]
-            
-            print()
-            # Now for each id in the non-unique list we enter a loop
-            for i in range(len(nuni_id)):
-                if uni_els[nuni_id[i]] == -1:
-                    continue
-                w_i = np.where(fp_index==uni_els[nuni_id[i]])[0]
-                # Now we loop over all elements of w_i
-                for j in range(1, len(w_i)):
-                    try:
-                        fileCommon = np.append( fileCommon, fileCommon[np.where(treeCommon==w_i[0])[0][0]] )
-                    except:
-                        continue
-                    treeCommon = np.append( treeCommon, w_i[j] )
-
-
-            # These guys not always match, sometimes treeCommon has less elements
-            print(treeCommon.shape, fp_index.shape)
-
-            
             # get all the interesting properties stored in the group-files, for all available snapshots
             ################ READING SINGLE-FILES ###################
             total_Nsub = int(0)
@@ -299,19 +273,31 @@ class tree:
                     _sfr_half_rad[cumsub:cumsub+nsub]      = f['Subhalo']['SubhaloSfrInHalfRad']
 
                 cumsub += nsub
+
             ################# DONE WITH THIS SNAPSHOT  ###################
             print("Done with snap {:d}".format(s))
 
-            self.sub_tree_prop['SubhaloMass'][self.snap_0-s-1,treeCommon] = _mass[fileCommon]
-            self.sub_tree_prop['SubhaloIsCen'][self.snap_0-s-1,treeCommon] = _is_cen[fileCommon]
-            self.sub_tree_prop['SubhaloMassType'][self.snap_0-s-1,treeCommon,...] = _mass_type[fileCommon,...]
-#            self.sub_tree_prop['SubhaloSpinType'][self.snap_0-s-1,treeCommon,...] = _spin_type[fileCommon,...]
-            self.sub_tree_prop['SubhaloIDMostbound'][self.snap_0-s-1,treeCommon] = _id_mostbound[fileCommon]
-            self.sub_tree_prop['SubhaloPos'][self.snap_0-s-1,treeCommon,...] = _pos[fileCommon,...]
-            self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,treeCommon,...] = _intertia_tensor[fileCommon,...]
-            self.sub_tree_prop['SubhaloRotationalEnergyStars'][self.snap_0-s-1,treeCommon] = _rotational_energy[fileCommon]
-            self.sub_tree_prop['SubhaloSFR'][self.snap_0-s-1,treeCommon] = _sfr[fileCommon]
-            self.sub_tree_prop['SubhaloSfrInHalfRad'][self.snap_0-s-1,treeCommon] = _sfr[fileCommon]
+            # Map values to their positions in treeIndex
+            treeIndex = np.array(treeIndex)
+            val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
+
+            # Get the progenitor list
+            fp_index = self.fp_idx[self.snap_0-s-1,:]
+
+            # Create mask and array of positions in treeIndex
+            mask = np.isin(fp_index, treeIndex)
+            positions = np.array([val_to_idx[val] for val in fp_index[mask]])
+
+            self.new_sub_tree_prop['SubhaloMass'][self.snap_0-s-1,mask] = _mass[positions]
+            self.new_sub_tree_prop['SubhaloIsCen'][self.snap_0-s-1,mask] = _is_cen[positions]
+            self.new_sub_tree_prop['SubhaloMassType'][self.snap_0-s-1,mask,...] = _mass_type[positions,...]
+#            self.sub_tree_prop['SubhaloSpinType'][self.snap_0-s-1,mask,...] = _spin_type[positions,...]
+            self.new_sub_tree_prop['SubhaloIDMostbound'][self.snap_0-s-1,mask] = _id_mostbound[positions]
+            self.new_sub_tree_prop['SubhaloPos'][self.snap_0-s-1,mask,...] = _pos[positions,...]
+            self.new_sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,mask,...] = _intertia_tensor[positions,...]
+            self.new_sub_tree_prop['SubhaloRotationalEnergyStars'][self.snap_0-s-1,mask] = _rotational_energy[positions]
+            self.new_sub_tree_prop['SubhaloSFR'][self.snap_0-s-1,mask] = _sfr[positions]
+            self.new_sub_tree_prop['SubhaloSfrInHalfRad'][self.snap_0-s-1,mask] = _sfr[positions]
 
     def get_d_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False):
         '''
@@ -414,8 +400,9 @@ class tree:
 
                 roots = self.all_idx[ii][snap]
 
-    # TODO: double check the functioning of this function
     def get_mp_secondary_progenitors(self, snap_0):
+
+        SNAP_INT = 10
 
         print("Reading tree")
         # Read the tree
@@ -436,8 +423,9 @@ class tree:
 
         # For loop over all the possible halos at a certain snapshot
         print("Starting the Loop")
-        self.sec_prog = {snap_0-1-10*i:{} for i in range(1,26)}
-        for ii in range(len(self.sub_tree_index)):
+        self.sec_prog = {snap_0 - 1 - SNAP_INT*i:{} for i in range(1, int(snap_0/SNAP_INT))} # This will then start at 253
+        #for ii in range(len(self.sub_tree_index)):
+        for ii in range(10):
             tree_offset = self.tree_offsets[self.sub_tree_ID[ii]]
             print('Done for halo {:d}'.format(ii), end='\r')
             
@@ -454,7 +442,7 @@ class tree:
                 roots = new_roots
                 snap_i -= 1
 
-                if ( (snap_0 - snap_i)%10==0 ):
+                if ( (snap_0 - snap_i)%SNAP_INT==0 ):
                     self.sec_prog[snap_i-1][ii] = new_roots
 
         return None
@@ -464,6 +452,8 @@ class tree:
             This function is responsible for getting the file-pertinent information
             for the secondary progenitors of subhalos
         '''
+
+        SNAP_INT = 10
         
         # Get tree-relative ID and index of subhalos at Snap_0
         try:
@@ -495,7 +485,7 @@ class tree:
 
         # loading all data
         print("Starting to load data")
-        for s in range(10, 29, 10): 
+        for s in range(SNAP_INT, self.snap_0-SNAP_INT, SNAP_INT): 
             print("Getting the tree-relevant IDs and Indexes of subhalos in snapshot")
             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
@@ -531,15 +521,15 @@ class tree:
             ################# DONE WITH THIS SNAPSHOT  ###################
             print("Done with snap {:d}".format(s))
 
-            self.sub_secprog_prop['SubhaloMass'][264-s-1] = {}
-            self.sub_secprog_prop['SubhaloMassType'][264-s-1] = {}
+            self.sub_secprog_prop['SubhaloMass'][self.snap_0-s-1] = {}
+            self.sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1] = {}
 
             # Map values to their positions in treeIndex
             treeIndex = np.array(treeIndex)
             val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
 
             # Flatten the progenitor list
-            sp_index = [np.array(self.sec_prog[264-s-1][ii], dtype=int) for ii in range(len(self.sub_tree_index))]
+            sp_index = [np.array(self.sec_prog[self.snap_0-s-1][ii], dtype=int) for ii in range(len(self.sub_tree_index))]
             sp_1d = np.concatenate(sp_index)
 
             # Create mask and array of positions in treeIndex
@@ -558,8 +548,8 @@ class tree:
             self.out = [positions[i:j] for i, j in zip(cl_m[:-1], cl_m[1:])]
 
             for ii in range(len(self.sub_tree_index)):
-                self.sub_secprog_prop['SubhaloMass'][264-s-1][ii] = _mass[self.out[ii]]
-                self.sub_secprog_prop['SubhaloMassType'][264-s-1][ii] = _mass_type[self.out[ii],...]
+                self.sub_secprog_prop['SubhaloMass'][self.snap_0-s-1][ii] = _mass[self.out[ii]]
+                self.sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1][ii] = _mass_type[self.out[ii],...]
 
     def load_tree_prop(self, field, N):
         '''
