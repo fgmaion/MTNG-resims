@@ -52,6 +52,7 @@ class tree:
         self.get_redshift()
 
         self.SNAP_INT = SNAP_INT
+        self.min_snap = 34
 
     def get_redshift(self):
 
@@ -236,7 +237,7 @@ class tree:
 
             # loading all data
             print("Starting to load data")
-            for s in range(0, self.snap_0-self.SNAP_INT, self.SNAP_INT): 
+            for s in range(0, self.snap_0-self.min_snap, self.SNAP_INT): 
                 print("Getting the tree-relevant IDs and Indexes of subhalos in high-redshift snapshot")
                 treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
@@ -513,7 +514,7 @@ class tree:
 
             # loading all data
             print("Starting to load data")
-            for s in range(self.SNAP_INT, self.snap_0-self.SNAP_INT, self.SNAP_INT): 
+            for s in range(self.SNAP_INT, self.snap_0-self.min_snap, self.SNAP_INT): 
                 print("Getting the tree-relevant IDs and Indexes of subhalos in snapshot")
                 treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
