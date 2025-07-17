@@ -196,7 +196,7 @@ class tree:
         TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
-                tree.sub_tree_prop = pickle.load(fp)
+                self.sub_tree_prop = pickle.load(fp)
         else:
             # Get tree-relative ID and index of subhalos at Snap_0
             try:
@@ -312,7 +312,7 @@ class tree:
                 self.sub_tree_prop['SubhaloSfrInHalfRad'][self.snap_0-s-1,mask] = _sfr[positions]
 
             with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                pickle.dump(tree.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
 
     def get_d_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False):
@@ -421,7 +421,7 @@ class tree:
         TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             with open(TREE_BASE+"sec_prog_10_SNAP_INT.p", 'rb') as fp:
-                tree.sec_prog = pickle.load(fp)
+                self.sec_prog = pickle.load(fp)
         else:
             print("Reading tree")
             # Read the tree
@@ -468,7 +468,7 @@ class tree:
                         roots = [ mp ] # reset the root as being just the main progenitor
 
             with open(TREE_BASE+"sec_prog_10_SNAP_INT.p", "wb") as fp: 
-                pickle.dump(tree.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
         return None
 
@@ -481,7 +481,7 @@ class tree:
         TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             with open(TREE_BASE+"props_sec_prog_10_SNAP_INT.p", 'rb') as fp:
-                tree.sub_secprog_prop = pickle.load(fp)
+                self.sub_secprog_prop = pickle.load(fp)
         else:
             # Get tree-relative ID and index of subhalos at Snap_0
             try:
@@ -581,4 +581,4 @@ class tree:
                     self.sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1][ii] = _mass_type[self.out[ii],...]
 
             with open(TREE_BASE+"props_sec_prog_10_SNAP_INT.p", "wb") as fp: 
-                pickle.dump(tree.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
