@@ -343,7 +343,7 @@ class tree:
 
         self.sub_tree_prop['d_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        for s in range(0, 260, 10):
+        for s in range(0, self.snap_0, self.SNAP_INT):
             print("Doing Snapshot {:d}".format(self.snap_0-s))
             pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 
@@ -379,7 +379,7 @@ class tree:
 
         self.sub_tree_prop['IA_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        for s in range(0, 260, 10):
+        for s in range(0, self.snap_0, self.SNAP_INT):
             print("Doing Snapshot {:d}".format(self.snap_0-s))
             pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 
@@ -503,7 +503,7 @@ class tree:
             try:
                 self.sec_prog
             except:
-                self.get_mp_secondary_progenitors(self.snap_0, recompute=recompute)
+                self.get_mp_secondary_progenitors(recompute=recompute)
 
             print("Done Walking Tree (Secondary Progenitors Included)")
 
@@ -557,7 +557,7 @@ class tree:
                 val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
 
                 # Flatten the progenitor list
-                sp_index = [np.array(self.sec_prog[self.snap_0-s-1][ii], dtype=int)  for ii in range(10)] #for ii in range(len(self.sub_tree_index))]
+                sp_index = [np.array(self.sec_prog[self.snap_0-s-1][ii], dtype=int) for ii in range(len(self.sub_tree_index))]
                 sp_1d = np.concatenate(sp_index)
 
                 # Create mask and array of positions in treeIndex
@@ -575,28 +575,9 @@ class tree:
                 # Rebuild output with treeIndex positions instead of values
                 self.out = [positions[i:j] for i, j in zip(cl_m[:-1], cl_m[1:])]
 
-    #            for ii in range(len(self.sub_tree_index)):
-                for ii in range(10):
+                for ii in range(len(self.sub_tree_index)):
                     self.sub_secprog_prop['SubhaloMass'][self.snap_0-s-1][ii] = _mass[self.out[ii]]
                     self.sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1][ii] = _mass_type[self.out[ii],...]
 
             with open(TREE_BASE+"props_sec_prog_10_SNAP_INT.p", "wb") as fp: 
                 pickle.dump(tree.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
-
-    def load_tree_prop(self, field, N):
-        '''
-        Load one particular property of the trees. This loads the properties in treefiles sequentially until the (N+1)th treefile
-        Start the docum
-
-        '''
-
-        # Use list comprehension to directly read data
-        data_list = [
-            h5py.File(self.sim_base + f"treedata/trees.{n}.hdf5", 'r')[field[0]][field[1]][...]
-            for n in range(N+1)
-        ]
-
-        # Concatenate all arrays in the list
-        data = np.concatenate(data_list, axis=0)
-
-        return data
