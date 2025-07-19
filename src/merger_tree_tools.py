@@ -195,8 +195,11 @@ class tree:
         
         TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
+            print("Function is being run with recompute=False\n")
+            print("Now loading the saved file of secondary progenitor properties\n")
             with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
                 self.sub_tree_prop = pickle.load(fp)
+            print("Done\n")
         else:
             # Get tree-relative ID and index of subhalos at Snap_0
             try:
@@ -330,32 +333,50 @@ class tree:
         import bacco
         import bacco.probabilistic_bias as pb
 
-        # lagrangian positions of the galaxies
-        lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
+        TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
+        if recompute==False:
+            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
+                self.sub_tree_prop = pickle.load(fp)
+            try:
+                self.sub_tree_prop['d_bias']
+            except:
+                print("Code was run with recompute=FALSE, yet density biases have not been computed\n")
+        else:
+            # lagrangian positions of the galaxies
+            lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
-        # load the mtng-mimic simulation at very early stages
-        dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
+            # load the mtng-mimic simulation at very early stages
+            dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
 
-        dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
-                            ngenic_phases=True, phase_type=2, fixedPk=True)
+            dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
+                                ngenic_phases=True, phase_type=2, fixedPk=True)
 
-        dm_mtng.header['Seed'] = 100672
+            dm_mtng.header['Seed'] = 100672
 
-        # These are the variables that need to be measured on a Lagrangian grid
-        variables = ("J2", "J2=2", "J4", "J4=4", "J2=4")
-        terms = ("J2", "J22", "J2=2")
+            # These are the variables that need to be measured on a Lagrangian grid
+            variables = ("J2", "J2=2", "J4", "J4=4", "J2=4")
+            terms = ("J2", "J22", "J2=2")
 
-        pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=damping_scale, ngrid=ngrid, verbose=2)
-        D_model = pbm.setup_bias_model(pb.TensorBiasND, terms=terms, spatial_order=2)
+            pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=damping_scale, ngrid=ngrid, verbose=2)
+            D_model = pbm.setup_bias_model(pb.TensorBiasND, terms=terms, spatial_order=2)
 
-        self.sub_tree_prop['d_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
+            self.sub_tree_prop['d_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        for s in range(0, self.snap_0, self.SNAP_INT):
-            print("Doing Snapshot {:d}".format(self.snap_0-s))
-            pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
+            for s in range(0, self.snap_0, self.SNAP_INT):
+                try:
+                    print("Doing Snapshot {:d}\n".format(self.snap_0-s))
+                    pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 
-            tr_q, tr_value, tr_mask = pbm._define_tracers(tracer_q=lag_pos[self.snap_0-s-1,...])
-            self.sub_tree_prop['d_bias'][self.snap_0-s-1,...] = D_model.bias_per_object(tr_value)
+                    tr_q, tr_value, tr_mask = pbm._define_tracers(tracer_q=lag_pos[self.snap_0-s-1,...])
+                    self.sub_tree_prop['d_bias'][self.snap_0-s-1,...] = D_model.bias_per_object(tr_value)
+                except:
+                    print("Failed for SNAP {:d}\n".format(self.snap_0-s))
+
+        if save:
+            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
+                pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 
     def get_IA_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False):
         '''
@@ -365,35 +386,51 @@ class tree:
 
         import bacco
         import bacco.probabilistic_bias as pb
+        
+        TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
+        if recompute==False:
+            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
+                self.sub_tree_prop = pickle.load(fp)
+            try:
+                self.sub_tree_prop['IA_bias']
+            except:
+                print("Code was run with recompute=FALSE, yet density biases have not been computed\n")
+        else:
+            # lagrangian positions of the galaxies
+            lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
-        # lagrangian positions of the galaxies
-        lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
+            # load the mtng-mimic simulation at very early stages
+            dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
 
-        # load the mtng-mimic simulation at very early stages
-        dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
+            dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
+                                ngenic_phases=True, phase_type=2, fixedPk=True)
 
-        dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
-                            ngenic_phases=True, phase_type=2, fixedPk=True)
+            dm_mtng.header['Seed'] = 100672
 
-        dm_mtng.header['Seed'] = 100672
+            # These are the variables that need to be measured on a Lagrangian grid
+            variables = ("Txx", "Txy", "Txz", "Tyy", "Tyz", "Tzz",)
+            terms =  ("J2=2", "J22=2", "J2-2-2-")
 
-        # These are the variables that need to be measured on a Lagrangian grid
-        variables = ("Txx", "Txy", "Txz", "Tyy", "Tyz", "Tzz",)
-        terms =  ("J2=2", "J22=2", "J2-2-2-")
+            pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=damping_scale, ngrid=ngrid, verbose=2)
+            IA_model = pbm.setup_bias_model(pb.IA_TensorBiasND, terms=terms, spatial_order=2)
 
-        pbm = pb.ProbabilisticBiasManager(dm_mtng, variables=variables, damping_scale=damping_scale, ngrid=ngrid, verbose=2)
-        IA_model = pbm.setup_bias_model(pb.IA_TensorBiasND, terms=terms, spatial_order=2)
+            self.sub_tree_prop['IA_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
 
-        self.sub_tree_prop['IA_bias'] =  np.zeros( (self.snap_0, len(self.sub_tree_index), 3) )
+            for s in range(0, self.snap_0, self.SNAP_INT):
+                try:
+                    print("Doing Snapshot {:d}".format(self.snap_0-s))
+                    pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
 
-        for s in range(0, self.snap_0, self.SNAP_INT):
-            print("Doing Snapshot {:d}".format(self.snap_0-s))
-            pbm.set_reference_expfactor( 1 / ( 1 + self.redshift[self.snap_0-s-1]) )
+                    tr_q, tr_value, tr_mask = pbm._define_tracers(tracer_q=lag_pos[self.snap_0-s-1,...])
+                    shape_tensor = bacco.utils.I_to_S(self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,...])
+                    
+                    self.sub_tree_prop['IA_bias'][self.snap_0-s-1,...] = IA_model.bias_per_object(tr_value, I=shape_tensor)
+                except:
+                    print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
-            tr_q, tr_value, tr_mask = pbm._define_tracers(tracer_q=lag_pos[self.snap_0-s-1,...])
-            shape_tensor = bacco.utils.I_to_S(self.sub_tree_prop['SubhaloIntertiaTensorStars'][self.snap_0-s-1,...])
-            
-            self.sub_tree_prop['IA_bias'][self.snap_0-s-1,...] = IA_model.bias_per_object(tr_value, I=shape_tensor)
+        if save:
+            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
+                pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
     def get_all_progs(self, snap_0, depth):
 
