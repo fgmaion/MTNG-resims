@@ -43,6 +43,9 @@ void print_datatype_details(hid_t type_id) {
 
 #define FILE_OFF "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin"
 #define FILE_MP "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin"
+#define FILE_FP "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin"
+#define FILE_NP "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin"
+#define FILE_LT "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_type.bin"
 
 int main(void)
 {
@@ -57,9 +60,12 @@ int main(void)
     const char* base = "/cosmos_storage/simulations/TNG_Family/MTNG/treedata/trees.%d.hdf5";
     char file[1000];
  
-    FILE *file_off = fopen(FILE_OFF, "wb");
-    FILE *file_mp = fopen(FILE_MP, "wb");
-    
+//    FILE *file_off = fopen(FILE_OFF, "wb");
+//    FILE *file_mp = fopen(FILE_MP, "wb");
+//    FILE *file_fp = fopen(FILE_FP, "wb");
+//    FILE *file_np = fopen(FILE_NP, "wb");
+    FILE *file_lt = fopen(FILE_LT, "wb");
+
     while(Ntree_total < tree_max)
     {
         sprintf(file, base, i);
@@ -84,27 +90,59 @@ int main(void)
    
         // ['LastSnapShotNr', 'Nhalos_ThisFile', 'Nhalos_Total', 'Ntrees_ThisFile', 'Ntrees_Total', 'NumFiles']>
 
-        // Read the tree offsets
-        long long offset[Ntrees[0]];
-        dataset_id = H5Dopen(file_id, "/TreeTable/StartOffset", H5P_DEFAULT);
-        status = H5Dread(dataset_id, H5T_NATIVE_LLONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, offset);
-        status = H5Dclose(dataset_id);
-
-        fwrite(offset, sizeof(long long), Ntrees[0], file_off);
-
-        // Read the Main Progenitors
-        long long main_prog[Nhalos[0]];
-        dataset_id = H5Dopen(file_id, "/TreeHalos/TreeMainProgenitor", H5P_DEFAULT);
-        status = H5Dread(dataset_id, H5T_NATIVE_LLONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, main_prog);
-        //hid_t type_id = H5Dget_type(dataset_id);
-        //print_datatype_details(type_id);
-        status = H5Dclose(dataset_id);
+//        // Read the tree offsets
+//        long long offset[Ntrees[0]];
+//        dataset_id = H5Dopen(file_id, "/TreeTable/StartOffset", H5P_DEFAULT);
+//        status = H5Dread(dataset_id, H5T_NATIVE_LLONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, offset);
+//        status = H5Dclose(dataset_id);
+//
+//        fwrite(offset, sizeof(long long), Ntrees[0], file_off);
+//
+//        // Read the Main Progenitors
+//        long long main_prog[Nhalos[0]];
+//        dataset_id = H5Dopen(file_id, "/TreeHalos/TreeMainProgenitor", H5P_DEFAULT);
+//        status = H5Dread(dataset_id, H5T_NATIVE_LLONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, main_prog);
+//        //hid_t type_id = H5Dget_type(dataset_id);
+//        //print_datatype_details(type_id);
+//        status = H5Dclose(dataset_id);
+//        fwrite(main_prog, sizeof(long long), Nhalos[0], file_mp);
+//
+//        // Read the First Progenitors
+//        long long first_prog[Nhalos[0]];
+//        dataset_id = H5Dopen(file_id, "/TreeHalos/TreeFirstProgenitor", H5P_DEFAULT);
+//        status = H5Dread(dataset_id, H5T_NATIVE_LLONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, first_prog);
+//        //hid_t type_id = H5Dget_type(dataset_id);
+//        //print_datatype_details(type_id);
+//        status = H5Dclose(dataset_id);
+//        fwrite(first_prog, sizeof(long long), Nhalos[0], file_fp);
+//
+//        // Read the Next Progenitors
+//        long long next_prog[Nhalos[0]];
+//        dataset_id = H5Dopen(file_id, "/TreeHalos/TreeNextProgenitor", H5P_DEFAULT);
+//        status = H5Dread(dataset_id, H5T_NATIVE_LLONG, H5S_ALL, H5S_ALL, H5P_DEFAULT, next_prog);
+//        //hid_t type_id = H5Dget_type(dataset_id);
+//        //print_datatype_details(type_id);
+//        status = H5Dclose(dataset_id); 
+//        fwrite(next_prog, sizeof(long long), Nhalos[0], file_np);
  
-        fwrite(main_prog, sizeof(long long), Nhalos[0], file_mp);
+        // Read the Stellar Mass
+        int lentype[6*Nhalos[0]];
+        int star_len[Nhalos[0]];
+        dataset_id = H5Dopen(file_id, "/TreeHalos/SubhaloLenType", H5P_DEFAULT);
+        status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, lentype);
+        hid_t type_id = H5Dget_type(dataset_id);
+        print_datatype_details(type_id);
+        status = H5Dclose(dataset_id); 
+        for(int j=0; j<Nhalos[0]; j++)
+        {
+            star_len[j] = lentype[4+6*j];
+        }
+
+        fwrite(star_len, sizeof(int), Nhalos[0], file_lt);
     
-        printf("File offsets are %lld and %lld \n", offset[0], offset[1]);
-        printf("First few progenitors are %ld, %ld and %ld \n", main_prog[0], main_prog[1], main_prog[2]);
-        printf("\n \n");
+//        printf("File offsets are %lld and %lld \n", offset[0], offset[1]);
+//        printf("First few progenitors are %ld, %ld and %ld \n", main_prog[0], main_prog[1], main_prog[2]);
+//        printf("\n \n");
 
         /* Close the file. */
         status = H5Fclose(file_id);
@@ -112,7 +150,10 @@ int main(void)
         i++;
    }
 
-   fclose(file_off);
-   fclose(file_mp);
+//   fclose(file_off);
+//   fclose(file_mp);
+//   fclose(file_fp);
+//   fclose(file_np);
+    fclose(file_lt);
 }
 
