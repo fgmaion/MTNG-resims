@@ -128,7 +128,7 @@ class tree:
         self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
         self.sub_firstprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin", dtype=np.int64)
         self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
-
+        self.sub_lentype = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_type.bin", dtype=np.int32)
 
     def walk_subs(self):
         '''
@@ -168,6 +168,7 @@ class tree:
         ifile = []
         
         for file_number in range(640):
+            print("Loading file number ${:d}\n".format(file_number))
             treelink=self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(snap, snap, file_number)
 
             with h5py.File(treelink) as file:
@@ -324,7 +325,7 @@ class tree:
                     pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-    def get_d_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False):
+    def get_d_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False, save=True):
         '''
             In this function we wish to apply the probabilistic bias-estimators to the
             subhalos we have
@@ -342,6 +343,12 @@ class tree:
             except:
                 print("Code was run with recompute=FALSE, yet density biases have not been computed\n")
         else:
+            try:
+                self.sub_tree_ID
+                self.sub_tree_index
+            except:
+                self.get_sub_tree_props()
+
             # lagrangian positions of the galaxies
             lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
@@ -372,13 +379,13 @@ class tree:
                 except:
                     print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
-        if save:
-            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+            if save:
+                with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
+                    pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 
-    def get_IA_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False):
+    def get_IA_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False, save=True):
         '''
             In this function we wish to apply the probabilistic bias-estimators to the
             subhalos we have
@@ -396,6 +403,12 @@ class tree:
             except:
                 print("Code was run with recompute=FALSE, yet density biases have not been computed\n")
         else:
+            try:
+                self.sub_tree_ID
+                self.sub_tree_index
+            except:
+                self.get_sub_tree_props()
+
             # lagrangian positions of the galaxies
             lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
@@ -428,9 +441,9 @@ class tree:
                 except:
                     print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
-        if save:
-            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+            if save:
+                with open(TREE_BASE+"props_main_prog_10_SNAP_INT_v1.p", "wb") as fp: 
+                    pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
     def get_all_progs(self, snap_0, depth):
 
@@ -465,7 +478,7 @@ class tree:
         if recompute==False:
             print("Function is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitors\n")
-            with open(TREE_BASE+"sec_prog_10_SNAP_INT.p", 'rb') as fp:
+            with open(TREE_BASE+"sec_prog_10_SNAP_INT_v1.p", 'rb') as fp:
                 self.sec_prog = pickle.load(fp)
             print("Done\n")
         else:
@@ -513,7 +526,7 @@ class tree:
                         self.sec_prog[snap_i-1][ii] = new_roots
                         roots = [ mp ] # reset the root as being just the main progenitor
             if save:
-                with open(TREE_BASE+"sec_prog_10_SNAP_INT.p", "wb") as fp: 
+                with open(TREE_BASE+"sec_prog_10_SNAP_INT_v1.p", "wb") as fp: 
                     pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
         return None
@@ -528,7 +541,7 @@ class tree:
         if recompute==False:
             print("Function is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
-            with open(TREE_BASE+"props_sec_prog_10_SNAP_INT.p", 'rb') as fp:
+            with open(TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", 'rb') as fp:
                 self.sub_secprog_prop = pickle.load(fp)
             print("Done\n")
         else:
@@ -553,7 +566,7 @@ class tree:
             try:
                 self.sec_prog
             except:
-                self.get_mp_secondary_progenitors(recompute=recompute)
+                self.get_mp_secondary_progenitors(recompute=False, save=False)
 
             print("Done Walking Tree (Secondary Progenitors Included)\n")
 
@@ -634,5 +647,5 @@ class tree:
                     print("FAILED for snapshot {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(TREE_BASE+"props_sec_prog_10_SNAP_INT.p", "wb") as fp: 
+                with open(TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", "wb") as fp: 
                     pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
