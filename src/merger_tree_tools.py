@@ -125,9 +125,13 @@ class tree:
     def read_tree_opt(self):
         
         self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int64)
+        print("Done with offsets")
         self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
+        print("Done with Mainprog")
         self.sub_firstprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin", dtype=np.int64)
+        print("Done with FirstProg")
         self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
+        print("Done with SecondaryProg")
 
     def walk_subs(self):
         '''
@@ -471,13 +475,16 @@ class tree:
 
                 roots = self.all_idx[ii][snap]
 
-    def get_mp_secondary_progenitors(self, recompute=False, save=False):
+    def get_mp_secondary_progenitors(self, recompute=False, save=False, sep_int=None):
+
+        if sep_int is None:
+            sep_int = self.SNAP_INT
 
         TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             print("Function is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitors\n")
-            with open(TREE_BASE+"sec_prog_10_SNAP_INT_v1.p", 'rb') as fp:
+            with open(TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
                 self.sec_prog = pickle.load(fp)
             print("Done\n")
         else:
@@ -500,7 +507,7 @@ class tree:
 
             # For loop over all the possible halos at a certain snapshot
             print("Starting the Loop")
-            self.sec_prog = {self.snap_0 - 1 - self.SNAP_INT*i:{} for i in range(1, int(self.snap_0/self.SNAP_INT))} # This will then start at 253
+            self.sec_prog = {self.snap_0 - 1 - self.sep_int*i:{} for i in range(1, int(self.snap_0/self.sep_int))} # This will then start at 253
             for ii in range(len(self.sub_tree_index)):
                 tree_offset = self.tree_offsets[self.sub_tree_ID[ii]]
                 print('Done for halo {:d}'.format(ii), end='\r')
@@ -521,11 +528,11 @@ class tree:
 
                     mp = self.sub_mainprog[mp + self.tree_offsets[self.sub_tree_ID[ii]]] # pass to the next main progenitor
 
-                    if ( (self.snap_0 - snap_i)%self.SNAP_INT==0 ):
+                    if ( (self.snap_0 - snap_i)%self.sep_int==0 ):
                         self.sec_prog[snap_i-1][ii] = new_roots
                         roots = [ mp ] # reset the root as being just the main progenitor
             if save:
-                with open(TREE_BASE+"sec_prog_10_SNAP_INT_v1.p", "wb") as fp: 
+                with open(TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
                     pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
         return None
@@ -564,41 +571,44 @@ class tree:
             self.get_sub_file_props(recompute=False, save=False)
             print("Done!\n")
 
-        # Walk the tree
-        try:
-            self.fp_idx
-        except:
-            self.walk_subs()
+        # # Walk the tree
+        # try:
+        #     self.fp_idx
+        # except:
+        #     self.walk_subs()
 
-        self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
-        for s in range(self.snap_0):
-            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
-            self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
-            zero_mask = self.fp_idx[self.snap_0-s-1]==-1
-            print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
-            self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+        # self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        # print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
+        # for s in range(self.snap_0):
+        #     print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
+        #     zero_mask = self.fp_idx[self.snap_0-s-1]==-1
+        #     print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
+        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
 
         # print("Done with the main progenitors!\n")
 
-        # try:
-        #     self.sec_prog
-        # except:
-        #     self.get_mp_secondary_progenitors(recompute=False, save=False)
+        try:
+            self.sec_prog[263]
+        except:
+            try:
+                self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
+            except:
+                self.get_mp_secondary_progenitors(recompute=True, save=True, sep_int=1)
 
-        # try:
-        #     self.sub_secprog_prop
-        # except:
-        #     self.get_secprog_props(recompute=False, save=False)
+        try:
+            self.sub_secprog_prop
+        except:
+            self.get_secprog_props(recompute=False, save=False)
 
-        # self.sub_secprog_prop['LenStars'] = {}
-        # for s in range(self.snap_0):
-        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1] = {}
-        #     for ii in range(len(self.sub_tree_index)):
-        #         print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
-        #         self.sub_secprog_prop['LenStars'][self.snap_0-s-1][ii] = self.sub_lenstars[self.sec_prog[self.snap_0-s-1][ii]]
+        self.sub_secprog_prop['LenStars'] = {}
+        for s in range(1,self.snap_0):
+            self.sub_tree_prop['LenStars'][self.snap_0-s-1] = {}
+            for ii in range(len(self.sub_tree_index)):
+                print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+                self.sub_secprog_prop['LenStars'][self.snap_0-s-1][ii] = self.sub_lenstars[self.sec_prog[self.snap_0-s-1][ii]]
 
-
+        print(self.sub_secprog_prop['LenStars'][263][0])
 
         return None
 
