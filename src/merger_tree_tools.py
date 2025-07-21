@@ -61,7 +61,7 @@ class tree:
         self.redshift = redshift[1:]
         self.expfactor = 1. / (1. + self.redshift)
 
-    def get_sub_tree_props(self):
+    def get_sub_tree_info(self):
         '''
             This function returns
             the tree-relative ID and Index of the subhalos there contained.
@@ -74,7 +74,7 @@ class tree:
         
         print( "Reading tree-relevant ID and index of subhalos in group {:d}".format(self.snap_0) )
         for file_number in range(640):
-            print("Done with file {:d}".format(file_number), end="\r")
+            print("Done with file {:d}\n".format(file_number), end="\r")
             treelink = self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(self.snap_0, self.snap_0, file_number)
 
             with h5py.File(treelink) as file:
@@ -128,7 +128,6 @@ class tree:
         self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
         self.sub_firstprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin", dtype=np.int64)
         self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
-        self.sub_lentype = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_type.bin", dtype=np.int32)
 
     def walk_subs(self):
         '''
@@ -207,7 +206,7 @@ class tree:
                 self.sub_tree_ID
                 self.sub_tree_index
             except:
-                self.get_sub_tree_props()
+                self.get_sub_tree_info()
 
             print("Reading tree")
             # Read the tree
@@ -347,7 +346,7 @@ class tree:
                 self.sub_tree_ID
                 self.sub_tree_index
             except:
-                self.get_sub_tree_props()
+                self.get_sub_tree_info()
 
             # lagrangian positions of the galaxies
             lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
@@ -407,7 +406,7 @@ class tree:
                 self.sub_tree_ID
                 self.sub_tree_index
             except:
-                self.get_sub_tree_props()
+                self.get_sub_tree_info()
 
             # lagrangian positions of the galaxies
             lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
@@ -497,7 +496,7 @@ class tree:
                 self.sub_tree_ID
                 self.sub_tree_index
             except:
-                self.get_sub_tree_props()
+                self.get_sub_tree_info()
 
             # For loop over all the possible halos at a certain snapshot
             print("Starting the Loop")
@@ -531,6 +530,80 @@ class tree:
 
         return None
 
+    def get_sub_tree_props(self, recompute=False, save=False):
+        '''
+            This function is responsible for getting the tree-pertinent information
+            for the subhalos which we have walked up the tree.
+        '''
+
+        # Get tree-relative ID and index of subhalos at Snap_0
+        try:
+            self.sub_tree_ID
+            self.sub_tree_index
+        except:
+            self.get_sub_tree_info()
+
+        print("Reading tree\n")
+        # Read the tree
+        try:
+            self.tree_offsets
+            self.sub_mainprog
+        except:
+            self.read_tree_opt()
+        print("Done reading tree\n")
+
+
+        print("Loading the number of stars in each subhalo\n")
+        self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
+        print("Done\n")
+
+        try:
+            self.sub_tree_prop['LenStars']
+        except:
+            print("Subhalo File properties are not yet computed so we must get them")
+            self.get_sub_file_props(recompute=False, save=False)
+            print("Done!\n")
+
+        # Walk the tree
+        try:
+            self.fp_idx
+        except:
+            self.walk_subs()
+
+        self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
+        for s in range(self.snap_0):
+            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+            self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
+            zero_mask = self.fp_idx[self.snap_0-s-1]==-1
+            print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
+            self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+
+        # print("Done with the main progenitors!\n")
+
+        # try:
+        #     self.sec_prog
+        # except:
+        #     self.get_mp_secondary_progenitors(recompute=False, save=False)
+
+        # try:
+        #     self.sub_secprog_prop
+        # except:
+        #     self.get_secprog_props(recompute=False, save=False)
+
+        # self.sub_secprog_prop['LenStars'] = {}
+        # for s in range(self.snap_0):
+        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1] = {}
+        #     for ii in range(len(self.sub_tree_index)):
+        #         print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+        #         self.sub_secprog_prop['LenStars'][self.snap_0-s-1][ii] = self.sub_lenstars[self.sec_prog[self.snap_0-s-1][ii]]
+
+
+
+        return None
+
+#    def get_exsitu_stellar_mass(self, recompute=False, save=False):
+
     def get_secprog_props(self, recompute=False, save=False):
         '''
             This function is responsible for getting the file-pertinent information
@@ -550,7 +623,7 @@ class tree:
                 self.sub_tree_ID
                 self.sub_tree_index
             except:
-                self.get_sub_tree_props()
+                self.get_sub_tree_info()
 
             print("Reading tree\n")
             # Read the tree
