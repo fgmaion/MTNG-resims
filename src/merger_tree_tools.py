@@ -4,6 +4,7 @@ import h5py
 import functools
 import bacco
 import copy
+import gc
 
 try:
     import cPickle as pickle
@@ -62,7 +63,7 @@ class tree:
         self.redshift = redshift[1:]
         self.expfactor = 1. / (1. + self.redshift)
 
-    def get_sub_tree_info(self, recompute=False, save=False):
+    def get_sub_tree_info(self, recompute=True, save=True):
         '''
             This function reads the tree-relevant ID and index of subhalos in group snap_0.
             It stores the information in self.sub_tree_ID, self.sub_tree_index and self.ifile.
@@ -74,7 +75,7 @@ class tree:
         self.ifile = []
         
         if recompute==False:
-            print("Function is being run with recompute=False\n")
+            print("Function get_sub_tree_info is being run with recompute=False\n")
             print("Now loading the saved file of subhalo tree-relevant IDs and indices\n")
             with open(self.TREE_BASE+"sub_tree_info_{:d}.p".format(self.snap_0), 'rb') as fp:
                 self.sub_tree_ID, self.sub_tree_index, self.ifile = pickle.load(fp)
@@ -138,6 +139,7 @@ class tree:
 
         self.tree_offsets = tree_offsets
         self.sub_mainprog = sub_mainprog
+    
     def read_tree_opt(self):
         
         self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int64)
@@ -148,6 +150,21 @@ class tree:
         print("Done with FirstProg")
         self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
         print("Done with SecondaryProg")
+
+    def clean_tree(self):
+        '''
+           This function deletes some properties of the class that are no longer
+           being used and take large portions of RAM
+        '''
+
+        del self.sub_mainprog
+        del self.sub_firstprog
+        del self.sub_nextprog
+        del self.tree_offsets
+
+        gc.collect()
+
+        print("Tree cleaned!\n")
 
     def walk_subs(self):
         '''
@@ -214,7 +231,7 @@ class tree:
         '''
         
         if recompute==False:
-            print("Function is being run with recompute=False\n")
+            print("Function get_sub_file_props is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
             with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
                 self.sub_tree_prop = pickle.load(fp)
@@ -495,7 +512,7 @@ class tree:
 
         self.TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
-            print("Function is being run with recompute=False\n")
+            print("Function get_mp_secondary_progenitors is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitors\n")
             with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
                 self.sec_prog = pickle.load(fp)
@@ -550,6 +567,8 @@ class tree:
                 with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
                     pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
+
+
         return None
 
     def get_sub_tree_props(self, recompute=False, save=False):
@@ -579,29 +598,29 @@ class tree:
         self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
         print("Done\n")
 
-        try:
-            self.sub_tree_prop['LenStars']
-        except:
-            print("Subhalo File properties are not yet computed so we must get them")
-            self.get_sub_file_props(recompute=False, save=False)
-            print("Done!\n")
+        # try:
+        #     self.sub_tree_prop['LenStars']
+        # except:
+        #     print("Subhalo File properties are not yet computed so we must get them")
+        #     self.get_sub_file_props(recompute=False, save=False)
+        #     print("Done!\n")
 
-        # Walk the tree
-        try:
-            self.fp_idx
-        except:
-            self.walk_subs()
+        # # Walk the tree
+        # try:
+        #     self.fp_idx
+        # except:
+        #     self.walk_subs()
 
-        self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
-        for s in range(self.snap_0):
-            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
-            self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
-            zero_mask = self.fp_idx[self.snap_0-s-1]==-1
-            print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
-            self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+        # self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        # print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
+        # for s in range(self.snap_0):
+        #     print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
+        #     zero_mask = self.fp_idx[self.snap_0-s-1]==-1
+        #     print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
+        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
 
-        print("Done with the main progenitors!\n")
+        # print("Done with the main progenitors!\n")
 
         try:
             self.sec_prog[263]
@@ -609,7 +628,11 @@ class tree:
             try:
                 self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
             except:
-                self.get_mp_secondary_progenitors(recompute=True, save=True, sep_int=1)
+                self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
+
+        print("Cleaning unused tree properties\n")
+        self.clean_tree()
+        print("Done Cleaning\n")
 
         try:
             self.sub_secprog_prop
@@ -618,10 +641,12 @@ class tree:
 
         self.sub_secprog_prop.setdefault('LenStars', {})
         for s in range(1,self.snap_0):
-            self.sub_tree_prop['LenStars'][self.snap_0-s-1] = {}
+            snap_index = self.snap_0 - s - 1
+            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+
+            sec_prog_snap = self.sec_prog[snap_index]
             for ii in range(len(self.sub_tree_index)):
-                print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
-                self.sub_secprog_prop['LenStars'][self.snap_0-s-1][ii] = self.sub_lenstars[self.sec_prog[self.snap_0-s-1][ii]]
+                self.sub_secprog_prop['LenStars'][snap_index][ii] = self.sub_lenstars[self.sec_prog[self.snap_0-s-1][ii]]
 
         print(self.sub_secprog_prop['LenStars'][263][0])
 
@@ -654,7 +679,7 @@ class tree:
         '''
 
         if recompute==False:
-            print("Function is being run with recompute=False\n")
+            print("Function get_secprog_props is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
             with open(self.TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", 'rb') as fp:
                 self.sub_secprog_prop = pickle.load(fp)
