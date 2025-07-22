@@ -36,6 +36,8 @@ def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
 class tree:
 
     def __init__(self, snap_0=264, tree_format='MTNG', name=None, to_read=None, SNAP_INT=None):
+        self.TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
+
         self.snap_0 = snap_0
         self.tree_format = tree_format
 
@@ -46,7 +48,6 @@ class tree:
         elif tree_format == 'zoom':
             self.sim_base = "/cosmos_storage/data_sharing/MN5_resims/"+name+"/hydro_output/"
             self.sim_0 = bacco.utils.load_zoom(snap=self.snap_0, name=name)
-
 
         self.to_read = to_read
         self.get_redshift()
@@ -61,36 +62,51 @@ class tree:
         self.redshift = redshift[1:]
         self.expfactor = 1. / (1. + self.redshift)
 
-    def get_sub_tree_info(self):
+    def get_sub_tree_info(self, recompute=False, save=False):
         '''
-            This function returns
-            the tree-relative ID and Index of the subhalos there contained.
-            
+            This function reads the tree-relevant ID and index of subhalos in group snap_0.
+            It stores the information in self.sub_tree_ID, self.sub_tree_index and self.ifile.
+            If to_read is not None, it will only read the indices specified in to_read.            
         '''
 
         self.sub_tree_ID = []
         self.sub_tree_index = []
         self.ifile = []
         
-        print( "Reading tree-relevant ID and index of subhalos in group {:d}".format(self.snap_0) )
-        for file_number in range(640):
-            print("Done with file {:d}\n".format(file_number), end="\r")
-            treelink = self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(self.snap_0, self.snap_0, file_number)
-
-            with h5py.File(treelink) as file:
-                self.sub_tree_ID.extend( file['Subhalo']['TreeID'][...] )
-                self.sub_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
-                self.ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
-        
-        if self.to_read is None:
-            self.sub_tree_index = np.array(self.sub_tree_index, dtype=np.int64)
-            self.sub_tree_ID = np.array(self.sub_tree_ID, dtype=np.int64)
-            self.ifile = np.array(self.ifile)
-
+        if recompute==False:
+            print("Function is being run with recompute=False\n")
+            print("Now loading the saved file of subhalo tree-relevant IDs and indices\n")
+            with open(self.TREE_BASE+"sub_tree_info_{:d}.p".format(self.snap_0), 'rb') as fp:
+                self.sub_tree_ID, self.sub_tree_index, self.ifile = pickle.load(fp)
+            print("Done\n")
+            return None
         else:
-            self.sub_tree_index = np.array(self.sub_tree_index, dtype=np.int64)[self.to_read]
-            self.sub_tree_ID = np.array(self.sub_tree_ID, dtype=np.int64)[self.to_read]
-            self.ifile = np.array(self.ifile)[self.to_read]
+            print( "Reading tree-relevant ID and index of subhalos in group {:d}".format(self.snap_0) )
+            for file_number in range(640):
+                print("Done with file {:d}\n".format(file_number), end="\r")
+                treelink = self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(self.snap_0, self.snap_0, file_number)
+
+                with h5py.File(treelink) as file:
+                    self.sub_tree_ID.extend( file['Subhalo']['TreeID'][...] )
+                    self.sub_tree_index.extend( file['Subhalo']['TreeIndex'][...] )
+                    self.ifile.extend( file_number * np.ones(len(file['Subhalo']['TreeID'][...]), dtype=int) )
+            
+            if self.to_read is None:
+                self.sub_tree_index = np.array(self.sub_tree_index, dtype=np.int64)
+                self.sub_tree_ID = np.array(self.sub_tree_ID, dtype=np.int64)
+                self.ifile = np.array(self.ifile)
+
+            else:
+                self.sub_tree_index = np.array(self.sub_tree_index, dtype=np.int64)[self.to_read]
+                self.sub_tree_ID = np.array(self.sub_tree_ID, dtype=np.int64)[self.to_read]
+                self.ifile = np.array(self.ifile)[self.to_read]
+            print("Done reading tree-relevant IDs and indices of subhalos in group {:d}\n".format(self.snap_0))
+
+        if save:
+            print("Now saving the subhalo tree-relevant IDs and indices in "+self.TREE_BASE+"sub_tree_info_{:d}.p\n".format(self.snap_0))
+            with open(self.TREE_BASE+"sub_tree_info_{:d}.p".format(self.snap_0), "wb") as fp: 
+                pickle.dump((self.sub_tree_ID, self.sub_tree_index, self.ifile), fp, protocol=pickle.HIGHEST_PROTOCOL)
+            print("Done!\n")
 
     def read_tree(self):
         '''
@@ -197,11 +213,10 @@ class tree:
             for the subhalos which we have walked up the tree.
         '''
         
-        TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             print("Function is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
-            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
+            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
                 self.sub_tree_prop = pickle.load(fp)
             print("Done\n")
         else:
@@ -324,7 +339,7 @@ class tree:
                 print("Done with snap {:d}".format(s))
 
             if save:
-                with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
+                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
                     pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
 
@@ -337,9 +352,8 @@ class tree:
         import bacco
         import bacco.probabilistic_bias as pb
 
-        TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
-            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
+            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
                 self.sub_tree_prop = pickle.load(fp)
             try:
                 self.sub_tree_prop['d_bias']
@@ -383,7 +397,7 @@ class tree:
                     print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
+                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
                     pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
 
@@ -397,9 +411,8 @@ class tree:
         import bacco
         import bacco.probabilistic_bias as pb
         
-        TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
-            with open(TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
+            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
                 self.sub_tree_prop = pickle.load(fp)
             try:
                 self.sub_tree_prop['IA_bias']
@@ -445,7 +458,7 @@ class tree:
                     print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(TREE_BASE+"props_main_prog_10_SNAP_INT_v1.p", "wb") as fp: 
+                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT_v1.p", "wb") as fp: 
                     pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
     def get_all_progs(self, snap_0, depth):
@@ -480,11 +493,11 @@ class tree:
         if sep_int is None:
             sep_int = self.SNAP_INT
 
-        TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
+        self.TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             print("Function is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitors\n")
-            with open(TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
+            with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
                 self.sec_prog = pickle.load(fp)
             print("Done\n")
         else:
@@ -507,7 +520,7 @@ class tree:
 
             # For loop over all the possible halos at a certain snapshot
             print("Starting the Loop")
-            self.sec_prog = {self.snap_0 - 1 - self.sep_int*i:{} for i in range(1, int(self.snap_0/self.sep_int))} # This will then start at 253
+            self.sec_prog = {self.snap_0 - 1 - sep_int*i:{} for i in range(1, int(self.snap_0/sep_int))} # This will then start at 253
             for ii in range(len(self.sub_tree_index)):
                 tree_offset = self.tree_offsets[self.sub_tree_ID[ii]]
                 print('Done for halo {:d}'.format(ii), end='\r')
@@ -528,11 +541,13 @@ class tree:
 
                     mp = self.sub_mainprog[mp + self.tree_offsets[self.sub_tree_ID[ii]]] # pass to the next main progenitor
 
-                    if ( (self.snap_0 - snap_i)%self.sep_int==0 ):
+                    if ( (self.snap_0 - snap_i)%sep_int==0 ):
                         self.sec_prog[snap_i-1][ii] = new_roots
                         roots = [ mp ] # reset the root as being just the main progenitor
+            print("Finished")
             if save:
-                with open(TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
+                print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p\n".format(sep_int))
+                with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
                     pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
         return None
@@ -571,22 +586,22 @@ class tree:
             self.get_sub_file_props(recompute=False, save=False)
             print("Done!\n")
 
-        # # Walk the tree
-        # try:
-        #     self.fp_idx
-        # except:
-        #     self.walk_subs()
+        # Walk the tree
+        try:
+            self.fp_idx
+        except:
+            self.walk_subs()
 
-        # self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        # print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
-        # for s in range(self.snap_0):
-        #     print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
-        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
-        #     zero_mask = self.fp_idx[self.snap_0-s-1]==-1
-        #     print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
-        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+        self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
+        for s in range(self.snap_0):
+            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+            self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
+            zero_mask = self.fp_idx[self.snap_0-s-1]==-1
+            print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
+            self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
 
-        # print("Done with the main progenitors!\n")
+        print("Done with the main progenitors!\n")
 
         try:
             self.sec_prog[263]
@@ -601,7 +616,7 @@ class tree:
         except:
             self.get_secprog_props(recompute=False, save=False)
 
-        self.sub_secprog_prop['LenStars'] = {}
+        self.sub_secprog_prop.setdefault('LenStars', {})
         for s in range(1,self.snap_0):
             self.sub_tree_prop['LenStars'][self.snap_0-s-1] = {}
             for ii in range(len(self.sub_tree_index)):
@@ -612,7 +627,25 @@ class tree:
 
         return None
 
-#    def get_exsitu_stellar_mass(self, recompute=False, save=False):
+    def get_exsitu_stellar_mass(self, recompute=False, save=False):
+        '''
+            This function is responsible for getting the ex-situ stellar mass of subhalos
+            at different snapshots.
+        '''
+
+        # Check that LenStars is computed
+        try:
+            self.sub_tree_prop['LenStars']
+        except:
+            print("Subhalo File properties are not yet computed so we must get them")
+            self.get_sub_tree_props(recompute=False, save=False)
+            print("Done!\n")
+
+        # Sum up the stellar mass of all secondary progenitors
+        for s in range(self.snap_0):
+            for ii in range(len(self.sub_tree_index)):
+                _len_stars = np.sum(self.sub_secprog_prop['LenStars'][self.snap_0-s-1][ii])
+        
 
     def get_secprog_props(self, recompute=False, save=False):
         '''
@@ -620,11 +653,10 @@ class tree:
             for the secondary progenitors of subhalos
         '''
 
-        TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             print("Function is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
-            with open(TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", 'rb') as fp:
+            with open(self.TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", 'rb') as fp:
                 self.sub_secprog_prop = pickle.load(fp)
             print("Done\n")
         else:
@@ -730,5 +762,5 @@ class tree:
                     print("FAILED for snapshot {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", "wb") as fp: 
+                with open(self.TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", "wb") as fp: 
                     pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
