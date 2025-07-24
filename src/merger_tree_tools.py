@@ -157,10 +157,22 @@ class tree:
            being used and take large portions of RAM
         '''
 
-        del self.sub_mainprog
-        del self.sub_firstprog
-        del self.sub_nextprog
-        del self.tree_offsets
+        try:
+            del self.sub_mainprog
+        except:
+            print("sub_mainprog does not exist, skipping deletion")
+        try:
+            del self.sub_firstprog
+        except:
+            print("sub_firstprog does not exist, skipping deletion")
+        try:
+            del self.sub_nextprog
+        except:
+            print("sub_nextprog does not exist, skipping deletion")
+        try:
+            del self.tree_offsets
+        except:
+            print("tree_offsets does not exist, skipping deletion")
 
         gc.collect()
 
@@ -179,6 +191,13 @@ class tree:
         # we wish to follow. This key should also be added to the function read_tree above,
         # so that we read the correct type of progenitors.
 
+        try:
+            self.sub_mainprog
+            self.tree_offsets
+        except:
+            print("sub_mainprog does not exist, reading tree")
+            self.read_tree_opt()
+            
         self.fp_idx = np.zeros((self.snap_0, len(self.sub_tree_index)), dtype=np.int64)
         
         print("Walking the Tree")
@@ -196,6 +215,9 @@ class tree:
                 i+=1
             
             self.fp_idx[:(self.snap_0 - i),j] = -1 * np.ones(self.snap_0 - i)
+
+        print("Done walking the tree")
+        self.clean_tree()
 
     def _sub_treeindex(self, snap):
 
@@ -244,13 +266,6 @@ class tree:
             except:
                 self.get_sub_tree_info()
 
-            print("Reading tree")
-            # Read the tree
-            try:
-                self.tree_offsets
-                self.sub_mainprog
-            except:
-                self.read_tree_opt()
     
             print("Done reading tree")
             
@@ -556,7 +571,7 @@ class tree:
                     roots = new_roots
                     snap_i -= 1
 
-                    mp = self.sub_mainprog[mp + self.tree_offsets[self.sub_tree_ID[ii]]] # pass to the next main progenitor
+                    mp = self.sub_mainprog[mp + tree_offset] # pass to the next main progenitor
 
                     if ( (self.snap_0 - snap_i)%sep_int==0 ):
                         self.sec_prog[snap_i-1][ii] = new_roots
@@ -567,7 +582,9 @@ class tree:
                 with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
                     pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
-
+        print("Done with secondary progenitors!\n")
+        self.clean_tree()
+        print("Tree cleaned!\n")
 
         return None
 
@@ -583,16 +600,6 @@ class tree:
             self.sub_tree_index
         except:
             self.get_sub_tree_info()
-
-        print("Reading tree\n")
-        # Read the tree
-        try:
-            self.tree_offsets
-            self.sub_mainprog
-        except:
-            self.read_tree_opt()
-        print("Done reading tree\n")
-
 
         print("Loading the number of stars in each subhalo\n")
         self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
@@ -642,11 +649,11 @@ class tree:
         self.sub_secprog_prop.setdefault('LenStars', {})
         for s in range(1,self.snap_0):
             snap_index = self.snap_0 - s - 1
-            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+            print("Now going through snap {:d} of the merger tree\n".format(snap_index+1))
 
             sec_prog_snap = self.sec_prog[snap_index]
             for ii in range(len(self.sub_tree_index)):
-                self.sub_secprog_prop['LenStars'][snap_index][ii] = self.sub_lenstars[self.sec_prog[self.snap_0-s-1][ii]]
+                self.sub_secprog_prop['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap[ii]]
 
         print(self.sub_secprog_prop['LenStars'][263][0])
 
@@ -672,16 +679,19 @@ class tree:
                 _len_stars = np.sum(self.sub_secprog_prop['LenStars'][self.snap_0-s-1][ii])
         
 
-    def get_secprog_props(self, recompute=False, save=False):
+    def get_secprog_props(self, recompute=False, save=False, sep_int=None):
         '''
             This function is responsible for getting the file-pertinent information
             for the secondary progenitors of subhalos
         '''
 
+        if sep_int is None:
+            sep_int = self.SNAP_INT
+
         if recompute==False:
             print("Function get_secprog_props is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
-            with open(self.TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", 'rb') as fp:
+            with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
                 self.sub_secprog_prop = pickle.load(fp)
             print("Done\n")
         else:
@@ -691,15 +701,6 @@ class tree:
                 self.sub_tree_index
             except:
                 self.get_sub_tree_info()
-
-            print("Reading tree\n")
-            # Read the tree
-            try:
-                self.tree_offsets
-                self.sub_mainprog
-            except:
-                self.read_tree_opt()
-            print("Done reading tree\n")
             
             print("Walking Tree (Secondary Progenitors Included)\n")
             # Walk the tree
@@ -716,7 +717,7 @@ class tree:
 
             # loading all data
             print("Starting to load data\n")
-            for s in range(self.SNAP_INT, self.snap_0-self.min_snap+1, self.SNAP_INT): 
+            for s in range(sep_int, self.snap_0-self.min_snap+1, sep_int): 
                 print("Getting the tree-relevant IDs and Indexes of subhalos in snapshot\n")
                 treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
@@ -787,5 +788,5 @@ class tree:
                     print("FAILED for snapshot {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(self.TREE_BASE+"props_sec_prog_10_SNAP_INT_v1.p", "wb") as fp: 
+                with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
                     pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
