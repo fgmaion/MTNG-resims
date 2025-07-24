@@ -84,7 +84,7 @@ class tree:
         else:
             print( "Reading tree-relevant ID and index of subhalos in group {:d}".format(self.snap_0) )
             for file_number in range(640):
-                print("Done with file {:d}\n".format(file_number), end="\r")
+                print("Done with file {:d}".format(file_number), end="\r")
                 treelink = self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(self.snap_0, self.snap_0, file_number)
 
                 with h5py.File(treelink) as file:
@@ -178,7 +178,7 @@ class tree:
 
         print("Tree cleaned!\n")
 
-    def walk_subs(self):
+    def walk_subs(self, recompute=False, save=False):
         '''
             This function takes the indices in self.sub_tree_index and walks
             them following the main progenitor.
@@ -191,33 +191,46 @@ class tree:
         # we wish to follow. This key should also be added to the function read_tree above,
         # so that we read the correct type of progenitors.
 
-        try:
-            self.sub_mainprog
-            self.tree_offsets
-        except:
-            print("sub_mainprog does not exist, reading tree")
-            self.read_tree_opt()
+        if recompute==False:
+            print("Function walk_subs is being run with recompute=False\n")
+            print("Now loading the saved file of main progenitors \n")
+            with open(self.TREE_BASE+"main_progs.p", 'rb') as fp:
+                self.fp_idx = pickle.load(fp)
+            print("Done\n")
+        else:
+            try:
+                self.sub_mainprog
+                self.tree_offsets
+            except:
+                print("sub_mainprog does not exist, reading tree")
+                self.read_tree_opt()
+                
+            self.fp_idx = np.zeros((self.snap_0, len(self.sub_tree_index)), dtype=np.int64)
             
-        self.fp_idx = np.zeros((self.snap_0, len(self.sub_tree_index)), dtype=np.int64)
-        
-        print("Walking the Tree")
+            print("Walking the Tree")
 
-        tree_indices = self.sub_tree_index
-        self.fp_idx[self.snap_0-1] = tree_indices + self.tree_offsets[self.sub_tree_ID] 
+            tree_indices = self.sub_tree_index
+            self.fp_idx[self.snap_0-1] = tree_indices + self.tree_offsets[self.sub_tree_ID]
 
-        for j in range(len(tree_indices)):
-            
-            fp = tree_indices[j]
-            i = 1
-            while fp != -1 and i < 264:
-                fp = self.sub_mainprog[fp + self.tree_offsets[self.sub_tree_ID[j]]]
-                self.fp_idx[self.snap_0 - i - 1,j] = fp + self.tree_offsets[self.sub_tree_ID[j]]
-                i+=1
-            
-            self.fp_idx[:(self.snap_0 - i),j] = -1 * np.ones(self.snap_0 - i)
+            for j in range(len(tree_indices)):
+                
+                fp = tree_indices[j]
+                i = 1
+                while fp != -1 and i < 264:
+                    fp = self.sub_mainprog[fp + self.tree_offsets[self.sub_tree_ID[j]]]
+                    self.fp_idx[self.snap_0 - i - 1,j] = fp + self.tree_offsets[self.sub_tree_ID[j]]
+                    i+=1
+                
+                self.fp_idx[:(self.snap_0 - i),j] = -1 * np.ones(self.snap_0 - i)
 
-        print("Done walking the tree")
-        self.clean_tree()
+            print("Done walking the tree")
+            self.clean_tree()
+
+            if save:
+                print("Now saving the main progenitors in "+self.TREE_BASE+"main_progs.p\n")
+                with open(self.TREE_BASE+"main_progs.p", "wb") as fp: 
+                    pickle.dump(self.fp_idx, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                print("Done!\n")
 
     def _sub_treeindex(self, snap):
 
@@ -605,29 +618,29 @@ class tree:
         self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
         print("Done\n")
 
-        # try:
-        #     self.sub_tree_prop['LenStars']
-        # except:
-        #     print("Subhalo File properties are not yet computed so we must get them")
-        #     self.get_sub_file_props(recompute=False, save=False)
-        #     print("Done!\n")
+        try:
+            self.sub_tree_prop['LenStars']
+        except:
+            print("Subhalo File properties are not yet computed so we must get them")
+            self.get_sub_file_props(recompute=False, save=False)
+            print("Done!\n")
 
-        # # Walk the tree
-        # try:
-        #     self.fp_idx
-        # except:
-        #     self.walk_subs()
+        # Walk the tree
+        try:
+            self.fp_idx
+        except:
+            self.walk_subs()
 
-        # self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
-        # print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
-        # for s in range(self.snap_0):
-        #     print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
-        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
-        #     zero_mask = self.fp_idx[self.snap_0-s-1]==-1
-        #     print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
-        #     self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+        self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
+        print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
+        for s in range(self.snap_0):
+            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+            self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
+            zero_mask = self.fp_idx[self.snap_0-s-1]==-1
+            print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
+            self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
 
-        # print("Done with the main progenitors!\n")
+        print("Done with the main progenitors!\n")
 
         try:
             self.sec_prog[263]
@@ -649,13 +662,14 @@ class tree:
         self.sub_secprog_prop.setdefault('LenStars', {})
         for s in range(1,self.snap_0):
             snap_index = self.snap_0 - s - 1
+            self.sub_secprog_prop['LenStars'][snap_index] = np.zeros((len(self.sub_tree_index), 1), dtype=np.int32)
             print("Now going through snap {:d} of the merger tree\n".format(snap_index+1))
 
             sec_prog_snap = self.sec_prog[snap_index]
             for ii in range(len(self.sub_tree_index)):
                 self.sub_secprog_prop['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap[ii]]
 
-        print(self.sub_secprog_prop['LenStars'][263][0])
+        print(self.sub_secprog_prop['LenStars'][262][0])
 
         return None
 
