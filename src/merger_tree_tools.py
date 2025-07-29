@@ -178,7 +178,7 @@ class tree:
 
         print("Tree cleaned!\n")
 
-    def walk_subs(self, recompute=False, save=False):
+    def walk_subs(self, recompute=True, save=True):
         '''
             This function takes the indices in self.sub_tree_index and walks
             them following the main progenitor.
@@ -503,7 +503,7 @@ class tree:
                     print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT_v1.p", "wb") as fp: 
+                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
                     pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
     def get_all_progs(self, snap_0, depth):
@@ -633,12 +633,18 @@ class tree:
 
         self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.sub_tree_index)) )
         print("Dimension of sub_tree_index is {:d}\n".format(len(self.sub_tree_index)))
-        for s in range(self.snap_0):
-            print("Now going through snap {:d} of the merger tree\n".format(self.snap_0-s))
+        for s in range(self.snap_0-self.min_snap+1):
+            print("Now going through snap {:d} of the merger tree\r".format(self.snap_0-s))
             self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
             zero_mask = self.fp_idx[self.snap_0-s-1]==-1
             print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
             self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+        
+        if save:
+            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_main_prog_10_SNAP_INT.p\n")
+            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
+                pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+            print("Done!\n")
 
         print("Done with the main progenitors!\n")
 
@@ -660,16 +666,20 @@ class tree:
             self.get_secprog_props(recompute=False, save=False)
 
         self.sub_secprog_prop.setdefault('LenStars', {})
-        for s in range(1,self.snap_0):
+        for s in range(1,self.snap_0-self.min_snap+1):
             snap_index = self.snap_0 - s - 1
-            self.sub_secprog_prop['LenStars'][snap_index] = np.zeros((len(self.sub_tree_index), 1), dtype=np.int32)
+            self.sub_secprog_prop['LenStars'][snap_index] = {}
             print("Now going through snap {:d} of the merger tree\n".format(snap_index+1))
 
             sec_prog_snap = self.sec_prog[snap_index]
             for ii in range(len(self.sub_tree_index)):
                 self.sub_secprog_prop['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap[ii]]
 
-        print(self.sub_secprog_prop['LenStars'][262][0])
+        if save:
+            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p\n".format(self.SNAP_INT))
+            with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(self.SNAP_INT), "wb") as fp: 
+                pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+            print("Done!\n")
 
         return None
 
