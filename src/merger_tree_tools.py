@@ -3,18 +3,12 @@ import numpy as np
 import h5py
 import functools
 import bacco
+import bacco.probabilistic_bias as pb
 import copy
 import gc
 
-try:
-    import cPickle as pickle
-except ImportError:  # Python 3.x
-    import pickle
-
 def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
     
-    import copy
-
     _mbID = copy.deepcopy(mbID)
 
     if mtng:
@@ -77,8 +71,11 @@ class tree:
         if recompute==False:
             print("Function get_sub_tree_info is being run with recompute=False\n")
             print("Now loading the saved file of subhalo tree-relevant IDs and indices\n")
-            with open(self.TREE_BASE+"sub_tree_info_{:d}.p".format(self.snap_0), 'rb') as fp:
-                self.sub_tree_ID, self.sub_tree_index, self.ifile = pickle.load(fp)
+            # Load the tuple back from the HDF5 file
+            with h5py.File(self.TREE_BASE + "sub_tree_info_{:d}.h5".format(self.snap_0), "r") as h5file:
+                self.sub_tree_ID = h5file["sub_tree_ID"][...]
+                self.sub_tree_index = h5file["sub_tree_index"][...]
+                self.ifile = h5file["ifile"][...]
             print("Done\n")
             return None
         else:
@@ -104,9 +101,13 @@ class tree:
             print("Done reading tree-relevant IDs and indices of subhalos in group {:d}\n".format(self.snap_0))
 
         if save:
-            print("Now saving the subhalo tree-relevant IDs and indices in "+self.TREE_BASE+"sub_tree_info_{:d}.p\n".format(self.snap_0))
-            with open(self.TREE_BASE+"sub_tree_info_{:d}.p".format(self.snap_0), "wb") as fp: 
-                pickle.dump((self.sub_tree_ID, self.sub_tree_index, self.ifile), fp, protocol=pickle.HIGHEST_PROTOCOL)
+            print("Now saving the subhalo tree-relevant IDs and indices in "+self.TREE_BASE+"sub_tree_info_{:d}.h5\n".format(self.snap_0))
+            # Save the tuple to an HDF5 file
+            with h5py.File(self.TREE_BASE + "sub_tree_info_{:d}.h5".format(self.snap_0), "w") as h5file:
+                # Save each element of the tuple with a unique key
+                h5file.create_dataset("sub_tree_ID", data=np.array(self.sub_tree_ID))
+                h5file.create_dataset("sub_tree_index", data=np.array(self.sub_tree_index))
+                h5file.create_dataset("ifile", data=np.array(self.ifile))
             print("Done!\n")
 
     def read_tree(self):
@@ -169,10 +170,6 @@ class tree:
             del self.sub_nextprog
         except:
             print("sub_nextprog does not exist, skipping deletion")
-        try:
-            del self.tree_offsets
-        except:
-            print("tree_offsets does not exist, skipping deletion")
 
         gc.collect()
 
@@ -194,8 +191,8 @@ class tree:
         if recompute==False:
             print("Function walk_subs is being run with recompute=False\n")
             print("Now loading the saved file of main progenitors \n")
-            with open(self.TREE_BASE+"main_progs.p", 'rb') as fp:
-                self.fp_idx = pickle.load(fp)
+            with h5py.File(self.TREE_BASE + "main_progs.h5", "r") as h5file:
+                self.fp_idx = h5file["fp_idx"][...]
             print("Done\n")
         else:
             try:
@@ -227,9 +224,9 @@ class tree:
             self.clean_tree()
 
             if save:
-                print("Now saving the main progenitors in "+self.TREE_BASE+"main_progs.p\n")
-                with open(self.TREE_BASE+"main_progs.p", "wb") as fp: 
-                    pickle.dump(self.fp_idx, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                print("Now saving the main progenitors in "+self.TREE_BASE+"main_progs.h5\n")
+                with h5py.File(self.TREE_BASE + "main_progs.h5", "w") as h5file:
+                    h5file.create_dataset("fp_idx", data=np.array(self.fp_idx))
                 print("Done!\n")
 
     def _sub_treeindex(self, snap):
@@ -237,7 +234,7 @@ class tree:
         sub_tree_ID = []
         sub_tree_index = []
         ifile = []
-        
+
         for file_number in range(640):
             print("Loading file number ${:d}\n".format(file_number))
             treelink=self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(snap, snap, file_number)
@@ -268,8 +265,8 @@ class tree:
         if recompute==False:
             print("Function get_sub_file_props is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
-            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
-                self.sub_tree_prop = pickle.load(fp)
+            with h5py.File(self.TREE_BASE + "props_main_prog_10_SNAP_INT.h5", "r") as h5file:
+                self.sub_tree_prop = load_dict_from_hdf5(h5file)
             print("Done\n")
         else:
             # Get tree-relative ID and index of subhalos at Snap_0
@@ -384,8 +381,8 @@ class tree:
                 print("Done with snap {:d}".format(s))
 
             if save:
-                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                    pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                with h5py.File(self.TREE_BASE + "props_main_prog_10_SNAP_INT.h5", "w") as h5file:
+                    save_dict_to_hdf5(h5file, "/", self.sub_tree_prop)
 
 
     def get_d_bias_history(self, ngrid=192, damping_scale=0.1, recompute=False, save=True):
@@ -394,12 +391,9 @@ class tree:
             subhalos we have
         '''
 
-        import bacco
-        import bacco.probabilistic_bias as pb
-
         if recompute==False:
-            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
-                self.sub_tree_prop = pickle.load(fp)
+            with h5py.File(self.TREE_BASE + "props_main_prog_10_SNAP_INT.h5", "r") as h5file:
+                self.sub_tree_prop = load_dict_from_hdf5(h5file)
             try:
                 self.sub_tree_prop['d_bias']
             except:
@@ -442,8 +436,8 @@ class tree:
                     print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                    pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                with h5py.File(self.TREE_BASE + "props_main_prog_10_SNAP_INT.h5", "w") as h5file:
+                    save_dict_to_hdf5(h5file, "/", self.sub_tree_prop)
 
 
 
@@ -452,13 +446,10 @@ class tree:
             In this function we wish to apply the probabilistic bias-estimators to the
             subhalos we have
         '''
-
-        import bacco
-        import bacco.probabilistic_bias as pb
-        
+                
         if recompute==False:
-            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
-                self.sub_tree_prop = pickle.load(fp)
+            with h5py.File(self.TREE_BASE + "props_main_prog_10_SNAP_INT.h5", "r") as h5file:
+                self.sub_tree_prop = load_dict_from_hdf5(h5file)
             try:
                 self.sub_tree_prop['IA_bias']
             except:
@@ -503,8 +494,8 @@ class tree:
                     print("Failed for SNAP {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                    pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                with h5py.File(self.TREE_BASE + "props_main_prog_10_SNAP_INT.h5", "r") as h5file:
+                    self.sub_tree_prop = load_dict_from_hdf5(h5file)
 
     def get_all_progs(self, snap_0, depth):
 
@@ -542,8 +533,8 @@ class tree:
         if recompute==False:
             print("Function get_mp_secondary_progenitors is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitors\n")
-            with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
-                self.sec_prog = pickle.load(fp)
+            with h5py.File(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.h5".format(sep_int), "r") as h5file: 
+                self.sec_prog = load_dict_from_hdf5(h5file)
             print("Done\n")
         else:
             print("Reading tree")
@@ -591,9 +582,9 @@ class tree:
                         roots = [ mp ] # reset the root as being just the main progenitor
             print("Finished")
             if save:
-                print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p\n".format(sep_int))
-                with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
-                    pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.h5\n".format(sep_int))
+                with h5py.File(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.h5".format(sep_int), "w") as h5file: 
+                    save_dict_to_hdf5(h5file, "/", self.sec_prog)
 
         print("Done with secondary progenitors!\n")
         self.clean_tree()
@@ -641,9 +632,9 @@ class tree:
             self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
         
         if save:
-            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_main_prog_10_SNAP_INT.p\n")
-            with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_main_prog_10_SNAP_INT.h5\n")
+            with h5py.File(self.TREE_BASE+"props_main_prog_10_SNAP_INT.h5", "w") as h5file: 
+                save_dict_to_hdf5(h5file, "/", self.sub_tree_prop)
             print("Done!\n")
 
         print("Done with the main progenitors!\n")
@@ -676,9 +667,9 @@ class tree:
                 self.sub_secprog_prop['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap[ii]]
 
         if save:
-            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p\n".format(self.SNAP_INT))
-            with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(self.SNAP_INT), "wb") as fp: 
-                pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.h5\n".format(self.SNAP_INT))
+            with h5py.File(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.h5".format(self.SNAP_INT), "w") as h5file: 
+                save_dict_to_hdf5(h5file, "/", self.sub_secprog_prop)
             print("Done!\n")
 
         return None
@@ -715,8 +706,8 @@ class tree:
         if recompute==False:
             print("Function get_secprog_props is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
-            with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
-                self.sub_secprog_prop = pickle.load(fp)
+            with h5py.File(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.h5".format(sep_int), 'r') as h5file:
+                self.sub_secprog_prop = load_dict_from_hdf5(h5file)
             print("Done\n")
         else:
             # Get tree-relative ID and index of subhalos at Snap_0
@@ -812,5 +803,27 @@ class tree:
                     print("FAILED for snapshot {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
-                    pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                with h5py.File(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.h5".format(sep_int), "w") as h5file: 
+                    save_dict_to_hdf5(h5file, "/", self.sub_secprog_prop)
+
+# Recursive function to save a nested dictionary to an HDF5 file
+def save_dict_to_hdf5(h5file, path, dictionary):
+    for key, value in dictionary.items():
+        key_path = f"{path}/{key}"  # Construct the full path for the key
+        if isinstance(value, dict):  # If the value is a nested dictionary
+            save_dict_to_hdf5(h5file, key_path, value)  # Recurse into the nested dictionary
+        elif isinstance(value, list):  # Convert lists to NumPy arrays
+            h5file.create_dataset(key_path, data=np.array(value))
+        else:  # Save other data types directly
+            h5file.create_dataset(key_path, data=value)
+
+# Recursive function to load a nested dictionary from an HDF5 file
+def load_dict_from_hdf5(h5file, path="/"):
+    result = {}
+    for key in h5file[path].keys():
+        key_path = f"{path}/{key}"  # Construct the full path for the key
+        if isinstance(h5file[key_path], h5py.Group):  # If it's a group, recurse
+            result[key] = load_dict_from_hdf5(h5file, key_path)
+        else:  # Otherwise, load the dataset
+            result[key] = h5file[key_path][...]
+    return result
