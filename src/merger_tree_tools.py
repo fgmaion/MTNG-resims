@@ -169,10 +169,6 @@ class tree:
             del self.sub_nextprog
         except:
             print("sub_nextprog does not exist, skipping deletion")
-        try:
-            del self.tree_offsets
-        except:
-            print("tree_offsets does not exist, skipping deletion")
 
         gc.collect()
 
@@ -538,12 +534,11 @@ class tree:
         if sep_int is None:
             sep_int = self.SNAP_INT
 
-        self.TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
         if recompute==False:
             print("Function get_mp_secondary_progenitors is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitors\n")
             with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
-                self.sec_prog = pickle.load(fp)
+                self.sec_prog = np.load(TREE_BASE+"sec_props_test.npy", allow_pickle=True)
             print("Done\n")
         else:
             print("Reading tree")
@@ -565,7 +560,7 @@ class tree:
 
             # For loop over all the possible halos at a certain snapshot
             print("Starting the Loop")
-            self.sec_prog = {self.snap_0 - 1 - sep_int*i:{} for i in range(1, int(self.snap_0/sep_int))} # This will then start at 253
+            _sec_prog = {self.snap_0 - 1 - sep_int*i:{} for i in range(1, int(self.snap_0/sep_int))} # This will then start at 253
             for ii in range(len(self.sub_tree_index)):
                 tree_offset = self.tree_offsets[self.sub_tree_ID[ii]]
                 print('Done for halo {:d}'.format(ii), end='\r')
@@ -587,13 +582,27 @@ class tree:
                     mp = self.sub_mainprog[mp + tree_offset] # pass to the next main progenitor
 
                     if ( (self.snap_0 - snap_i)%sep_int==0 ):
-                        self.sec_prog[snap_i-1][ii] = new_roots
+                        _sec_prog[snap_i-1][ii] = new_roots
                         roots = [ mp ] # reset the root as being just the main progenitor
             print("Finished")
             if save:
-                print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p\n".format(sep_int))
-                with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
-                    pickle.dump(self.sec_prog, fp, protocol=pickle.HIGHEST_PROTOCOL)
+
+                print("Preparing data for being saved\n")
+                rows = []
+                for snap, sub_dict in _sec_prog.items():
+                    for subhalo_index, prog_list in sub_dict.items():
+                        for prog in prog_list:
+                            rows.append( (snap, subhalo_index, prog) )
+
+                # Convert to a NumPy structured array
+                dtype = np.dtype([('snap', np.int32), ('subhalo', np.int32), ('prog', np.int64)])
+                print("Converting to a NumPy structured array\n")
+                flat_array = np.array(rows, dtype=dtype)
+                print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy\n".format(sep_int))
+                np.save(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), flat_array, allow_pickle=True)
+                print("Done!\n")
+
+                self.sec_prog = flat_array
 
         print("Done with secondary progenitors!\n")
         self.clean_tree()
@@ -665,20 +674,31 @@ class tree:
         except:
             self.get_secprog_props(recompute=False, save=False)
 
-        self.sub_secprog_prop.setdefault('LenStars', {})
+        _lenstars = {}
         for s in range(1,self.snap_0-self.min_snap+1):
             snap_index = self.snap_0 - s - 1
-            self.sub_secprog_prop['LenStars'][snap_index] = {}
+            _lenstars[snap_index] = {}
             print("Now going through snap {:d} of the merger tree\n".format(snap_index+1))
 
-            sec_prog_snap = self.sec_prog[snap_index]
             for ii in range(len(self.sub_tree_index)):
-                self.sub_secprog_prop['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap[ii]]
+                sec_prog_snap = self.sec_prog[(self.sec_prog['snap']==snap_index) & (self.sec_prog['subhalo']==ii)]['prog']
+                _lenstars[snap_index][ii] = self.sub_lenstars[sec_prog_snap]
+
+        rows = []
+        for field_name, sub_dict in _lenstars.items():0
+            for snap, ss_dict in sub_dict.items():
+                for subhalo_index, prop_list in ss_dict.items():
+                    for prop in prop_list:
+                        rows.append((field_name, snap, subhalo_index, float(prop)))      
+
+        dtype = np.dtype([('field_name', '<U50'), ('snap', np.int32), ('subhalo', np.int32), ('prop', np.float64)])
+        flat_array = np.array(rwos, dtype=dtype)
+
+        combine = np.concatenate([self.sub_secprog_prop, flat_array])
 
         if save:
             print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p\n".format(self.SNAP_INT))
-            with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(self.SNAP_INT), "wb") as fp: 
-                pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+            np.save(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(self.SNAP_INT), combine, allow_pickle=True)
             print("Done!\n")
 
         return None
@@ -735,9 +755,9 @@ class tree:
 
             print("Done Walking Tree (Secondary Progenitors Included)\n")
 
-            self.sub_secprog_prop = {}
-            self.sub_secprog_prop['SubhaloMass'] = {}
-            self.sub_secprog_prop['SubhaloMassType'] = {}
+            _sub_secprog_prop = {}
+            _sub_secprog_prop['SubhaloMass'] = {}
+            _sub_secprog_prop['SubhaloMassType'] = {}
 
             # loading all data
             print("Starting to load data\n")
@@ -778,15 +798,16 @@ class tree:
                 print("Done with snap {:d}\n".format(self.snap_0-s))
 
                 try:
-                    self.sub_secprog_prop['SubhaloMass'][self.snap_0-s-1] = {}
-                    self.sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1] = {}
+                    _sub_secprog_prop['SubhaloMass'][self.snap_0-s-1] = {}
+                    _sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1] = {}
 
                     # Map values to their positions in treeIndex
                     treeIndex = np.array(treeIndex)
                     val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
 
                     # Flatten the progenitor list
-                    sp_index = [np.array(self.sec_prog[self.snap_0-s-1][ii], dtype=int) for ii in range(len(self.sub_tree_index))]
+                    sel = (self.sec_prog['snap'] == self.snap_0-s-1) & (self.sec_prog['subhalo'] == ii)
+                    sp_index = [np.array(self.sec_prog['prog'][sel], dtype=int) for ii in range(len(self.sub_tree_index))]
                     sp_1d = np.concatenate(sp_index)
 
                     # Create mask and array of positions in treeIndex
@@ -805,12 +826,29 @@ class tree:
                     self.out = [positions[i:j] for i, j in zip(cl_m[:-1], cl_m[1:])]
 
                     for ii in range(len(self.sub_tree_index)):
-                        self.sub_secprog_prop['SubhaloMass'][self.snap_0-s-1][ii] = _mass[self.out[ii]]
-                        self.sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1][ii] = _mass_type[self.out[ii],...]
+                        _sub_secprog_prop['SubhaloMass'][self.snap_0-s-1][ii] = _mass[self.out[ii]]
+                        _sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1][ii] = _mass_type[self.out[ii],...]
 
                 except:
                     print("FAILED for snapshot {:d}\n".format(self.snap_0-s))
 
             if save:
-                with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), "wb") as fp: 
-                    pickle.dump(self.sub_secprog_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                print("Starting to flatten data and prepare it for saving \n")
+                rows = []
+                for field_name, sub_dict in _sub_secprog_prop.items():
+                    for snap, ss_dict in sub_dict.items():
+                        for subhalo_index, prop_list in ss_dict.items():
+                            for prop in prop_list:
+                                if isinstance(prop, (list, tuple, np.ndarray)):
+                                    for i, p in enumerate(prop):
+                                        rows.append((f"{field_name}_{i}", snap, subhalo_index, float(p)))
+                                else:
+                                    rows.append((field_name, snap, subhalo_index, float(prop)))                    
+
+                # Convert to a NumPy structured array
+                dtype = np.dtype([('name', '<U50'), ('snap', np.int32), ('subhalo', np.int32), ('prop', np.float64)])
+                flat_array = np.array(rows, dtype=dtype)
+
+                self.sub_secprog_prop = flat_array
+
+                np.save(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), self.sub_secprog_prop, allow_pickle=True)
