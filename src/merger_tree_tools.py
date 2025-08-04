@@ -582,27 +582,28 @@ class tree:
                     mp = self.sub_mainprog[mp + tree_offset] # pass to the next main progenitor
 
                     if ( (self.snap_0 - snap_i)%sep_int==0 ):
-                        _sec_prog[snap_i-1][ii] = new_roots
+                        _sec_prog[snap_i-1][ii] = new_roots + tree_offset
                         roots = [ mp ] # reset the root as being just the main progenitor
             print("Finished")
+
+            print("Preparing data for being saved\n")
+            rows = []
+            for snap, sub_dict in _sec_prog.items():
+                for subhalo_index, prog_list in sub_dict.items():
+                    for prog in prog_list:
+                        rows.append( (snap, subhalo_index, prog) )
+
+            # Convert to a NumPy structured array
+            dtype = np.dtype([('snap', np.int32), ('subhalo', np.int32), ('prog', np.int64)])
+            print("Converting to a NumPy structured array\n")
+            flat_array = np.array(rows, dtype=dtype)
+
+            self.sec_prog = flat_array
+
             if save:
-
-                print("Preparing data for being saved\n")
-                rows = []
-                for snap, sub_dict in _sec_prog.items():
-                    for subhalo_index, prog_list in sub_dict.items():
-                        for prog in prog_list:
-                            rows.append( (snap, subhalo_index, prog) )
-
-                # Convert to a NumPy structured array
-                dtype = np.dtype([('snap', np.int32), ('subhalo', np.int32), ('prog', np.int64)])
-                print("Converting to a NumPy structured array\n")
-                flat_array = np.array(rows, dtype=dtype)
                 print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy\n".format(sep_int))
                 np.save(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), flat_array, allow_pickle=True)
                 print("Done!\n")
-
-                self.sec_prog = flat_array
 
         print("Done with secondary progenitors!\n")
         self.clean_tree()
@@ -685,7 +686,7 @@ class tree:
                 _lenstars[snap_index][ii] = self.sub_lenstars[sec_prog_snap]
 
         rows = []
-        for field_name, sub_dict in _lenstars.items():0
+        for field_name, sub_dict in _lenstars.items():
             for snap, ss_dict in sub_dict.items():
                 for subhalo_index, prop_list in ss_dict.items():
                     for prop in prop_list:
