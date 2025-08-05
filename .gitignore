@@ -2,3 +2,6 @@
 /src/__pycache__
 /images
 /gas_fractions
+/halo_selection
+/Notebooks/.ipynb_checkpoints
+/bug_tests/.ipynb_checkpoints
