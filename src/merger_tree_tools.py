@@ -537,8 +537,7 @@ class tree:
         if recompute==False:
             print("Function get_mp_secondary_progenitors is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitors\n")
-            with open(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
-                self.sec_prog = np.load(TREE_BASE+"sec_props_test.npy", allow_pickle=True)
+            self.sec_prog = np.load(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), allow_pickle=True)
             print("Done\n")
         else:
             print("Reading tree")
@@ -698,7 +697,7 @@ class tree:
         combine = np.concatenate([self.sub_secprog_prop, flat_array])
 
         if save:
-            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p\n".format(self.SNAP_INT))
+            print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy\n".format(self.SNAP_INT))
             np.save(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(self.SNAP_INT), combine, allow_pickle=True)
             print("Done!\n")
 
@@ -736,8 +735,7 @@ class tree:
         if recompute==False:
             print("Function get_secprog_props is being run with recompute=False\n")
             print("Now loading the saved file of secondary progenitor properties\n")
-            with open(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.p".format(sep_int), 'rb') as fp:
-                self.sub_secprog_prop = pickle.load(fp)
+            self.sub_secprog_prop = np.load(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), allow_pickle=True)
             print("Done\n")
         else:
             # Get tree-relative ID and index of subhalos at Snap_0
