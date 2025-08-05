@@ -174,7 +174,7 @@ class tree:
 
         print("Tree cleaned!\n")
 
-    def walk_subs(self, recompute=True, save=True):
+    def walk_subs(self, recompute=False, save=False):
         '''
             This function takes the indices in self.sub_tree_index and walks
             them following the main progenitor.
@@ -659,7 +659,7 @@ class tree:
         print("Done with the main progenitors!\n")
 
         try:
-            self.sec_prog[263]
+            self.sec_prog
         except:
             try:
                 self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
@@ -693,7 +693,7 @@ class tree:
                         rows.append((field_name, snap, subhalo_index, float(prop)))      
 
         dtype = np.dtype([('field_name', '<U50'), ('snap', np.int32), ('subhalo', np.int32), ('prop', np.float64)])
-        flat_array = np.array(rwos, dtype=dtype)
+        flat_array = np.array(rows, dtype=dtype)
 
         combine = np.concatenate([self.sub_secprog_prop, flat_array])
 
