@@ -94,7 +94,7 @@ class tree:
         self.redshift = redshift[1:]
         self.expfactor = 1. / (1. + self.redshift)
 
-    def get_root_info(self, recompute=True, save=True):
+    def get_root_info(self, recompute=False, save=False):
         '''
             This function reads the tree-relevant ID and index of subhalos in group snap_0.
             It stores the information in self.root_tree_ID, self.root_index and self.ifile.
@@ -606,14 +606,23 @@ class tree:
                             new_roots.append( np.int64(Np) )
                             Np = self.sub_nextprog[Np + tree_offset]
 
+                    # In the case where sep_int=1 this is never really applied, because
+                    # it always gets passed through the line roots = [mp] below, before
+                    # returning to the loop
                     roots = new_roots
+                    
                     snap_i -= 1
 
                     mp = self.sub_mainprog[mp + tree_offset] # pass to the next main progenitor
 
                     if ( (self.snap_0 - snap_i)%sep_int==0 ):
-                        _sec_prog[snap_i-1][ii] = new_roots + tree_offset
+                        if len(new_roots)==0:
+                            _sec_prog[snap_i-1][ii] = []
+                        else:
+                            _sec_prog[snap_i-1][ii] = new_roots + tree_offset
                         roots = [ mp ] # reset the root as being just the main progenitor
+                        if mp == -1:
+                            break
             print("Finished")
 
             print("Preparing data for being saved\n")
