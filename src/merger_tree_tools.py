@@ -222,7 +222,7 @@ class tree:
             print("Function walk_subs is being run with recompute=False\n")
             print("Now loading the saved file of main progenitors \n")
             with open(self.TREE_BASE+"main_progs.p", 'rb') as fp:
-                self.fp_idx = pickle.load(fp)
+                self.mp_idx = pickle.load(fp)
             print("Done\n")
         else:
             try:
@@ -232,12 +232,12 @@ class tree:
                 print("sub_mainprog does not exist, reading tree")
                 self.read_tree_opt()
                 
-            self.fp_idx = np.zeros((self.snap_0, len(self.root_index)), dtype=np.int64)
+            self.mp_idx = np.zeros((self.snap_0, len(self.root_index)), dtype=np.int64)
             
             print("Walking the Tree")
 
             tree_indices = self.root_index
-            self.fp_idx[self.snap_0-1] = tree_indices + self.tree_offsets[self.root_tree_ID]
+            self.mp_idx[self.snap_0-1] = tree_indices + self.tree_offsets[self.root_tree_ID]
 
             for j in range(len(tree_indices)):
                 
@@ -245,10 +245,10 @@ class tree:
                 i = 1
                 while fp != -1 and i < 264:
                     fp = self.sub_mainprog[fp + self.tree_offsets[self.root_tree_ID[j]]]
-                    self.fp_idx[self.snap_0 - i - 1,j] = fp + self.tree_offsets[self.root_tree_ID[j]]
+                    self.mp_idx[self.snap_0 - i - 1,j] = fp + self.tree_offsets[self.root_tree_ID[j]]
                     i+=1
                 
-                self.fp_idx[:(self.snap_0 - i),j] = -1 * np.ones(self.snap_0 - i)
+                self.mp_idx[:(self.snap_0 - i),j] = -1 * np.ones(self.snap_0 - i)
 
             print("Done walking the tree")
             self.clean_tree()
@@ -256,7 +256,7 @@ class tree:
             if save:
                 print("Now saving the main progenitors in "+self.TREE_BASE+"main_progs.p\n")
                 with open(self.TREE_BASE+"main_progs.p", "wb") as fp: 
-                    pickle.dump(self.fp_idx, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                    pickle.dump(self.mp_idx, fp, protocol=pickle.HIGHEST_PROTOCOL)
                 print("Done!\n")
 
     def _sub_treeindex(self, snap):
@@ -312,7 +312,7 @@ class tree:
             print("Walking Tree")
             # Walk the tree
             try:
-                self.fp_idx
+                self.mp_idx
             except:
                 self.walk_subs()
             print("Done Walking Tree")
@@ -388,7 +388,7 @@ class tree:
                     val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
 
                     # Get the progenitor list
-                    fp_index = self.fp_idx[self.snap_0-s-1,:]
+                    fp_index = self.mp_idx[self.snap_0-s-1,:]
 
                     # Create mask and array of positions in treeIndex
                     mask = np.isin(fp_index, treeIndex)
@@ -641,24 +641,23 @@ class tree:
 
         return None
 
-    def get_sub_tree_props(self, recompute=False, save=False):
+    def get_main_prog_props(self, recompute=False, save=False):
         '''
             This function is responsible for getting the tree-pertinent information
-            for the subhalos which we have walked up the tree.
+            for the subhalos in the main-progenitor branch, starting from the roots 
+            stored at self.root_index at snap_0.
         '''
 
         if recompute==False:
             print("Function get_sub_tree_props is being run with recompute=False\n")
             print("Now loading the saved file of subhalo tree-pertinent properties of main progenitors\n")
             with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
-                self.sub_tree_prop = pickle.load(fp)
+                self.main_prop = pickle.load(fp)
             print("Done\n")
             
-            print("Now loading the saved file of secondary progenitor properties\n")
-            self.sub_secprog_prop = np.load(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(self.SNAP_INT), allow_pickle=True)
-            print("Done\n")
         else:
-            # Get tree-relative ID and index of subhalos at Snap_0
+            # Get tree-relative ID and index of subhalos at Snap_0.
+            # These are the roots of the trees that we will employ for all computations
             try:
                 self.root_tree_ID
                 self.root_index
@@ -669,77 +668,79 @@ class tree:
             self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
             print("Done\n")
 
-            try:
-                self.sub_tree_prop['LenStars']
-            except:
-                print("Subhalo File properties are not yet computed so we must get them")
-                self.get_sub_file_props(recompute=False, save=False)
-                print("Done!\n")
-
             # Walk the tree
             try:
-                self.fp_idx
+                self.mp_idx
             except:
                 self.walk_subs()
 
-            self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.root_index)) )
+            self.main_prop['LenStars'] = np.zeros( (self.snap_0, len(self.root_index)) )
             print("Dimension of root_index is {:d}\n".format(len(self.root_index)))
             for s in range(self.snap_0-self.min_snap+1):
                 print("Now going through snap {:d} of the merger tree\r".format(self.snap_0-s))
-                self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.fp_idx[self.snap_0-s-1]]
-                zero_mask = self.fp_idx[self.snap_0-s-1]==-1
+                self.main_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.mp_idx[self.snap_0-s-1]]
+                zero_mask = self.mp_idx[self.snap_0-s-1]==-1
                 print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
-                self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+                self.main_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
             
             if save:
                 print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_main_prog_10_SNAP_INT.p\n")
                 with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
-                    pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+                    pickle.dump(self.main_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
                 print("Done!\n")
 
             print("Done with the main progenitors!\n")
 
+        return None
+
+    def get_sec_prog_props(self, recompute=False, save=False):
+        '''
+            This function is responsible for getting the tree-pertinent information
+            for the subhalos in the main-progenitor branch, starting from the roots 
+            stored at self.root_index at snap_0.
+        '''
+
+        try:
+            self.sec_prog
+        except:
             try:
-                self.sec_prog
+                self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
             except:
-                try:
-                    self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
-                except:
-                    self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
+                self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
 
-            print("Cleaning unused tree properties\n")
-            self.clean_tree()
-            print("Done Cleaning\n")
+        print("Cleaning unused tree properties\n")
+        self.clean_tree()
+        print("Done Cleaning\n")
 
-            try:
-                self.sub_secprog_prop
-            except:
-                self.get_secprog_props(recompute=False, save=False)
+        try:
+            self.sub_secprog_prop
+        except:
+            self.get_secprog_props(recompute=False, save=False)
 
-            print("Building lookup index for secondary progenitors\n")
-            index_dict = build_lookup_index(self.sec_prog, name1='snap', name2='subhalo', name3='prog')
+        print("Building lookup index for secondary progenitors\n")
+        index_dict = build_lookup_index(self.sec_prog, name1='snap', name2='subhalo', name3='prog')
 
-            _lenstars = {'LenStars': {}}
-            for s in range(1,self.snap_0-self.min_snap+1):
-                snap_index = self.snap_0 - s - 1
-                _lenstars['LenStars'][snap_index] = {}
-                print("Now going through snap {:d} of the merger tree\n".format(snap_index+1))
+        _lenstars = {'LenStars': {}}
+        for s in range(1,self.snap_0-self.min_snap+1):
+            snap_index = self.snap_0 - s - 1
+            _lenstars['LenStars'][snap_index] = {}
+            print("Now going through snap {:d} of the merger tree\n".format(snap_index+1))
 
-                for ii in range(len(self.root_index)):
-                    print("Now going through subhalo {:d} of the merger tree\r".format(ii), end='\r')
-                    sec_prog_snap = index_dict[snap_index].get(ii, [])
-                    _lenstars['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap]
+            for ii in range(len(self.root_index)):
+                print("Now going through subhalo {:d} of the merger tree\r".format(ii), end='\r')
+                sec_prog_snap = index_dict[snap_index].get(ii, [])
+                _lenstars['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap]
 
-            rows = []
-            for field_name, sub_dict in _lenstars.items():
-                for snap, ss_dict in sub_dict.items():
-                    for subhalo_index, prop_list in ss_dict.items():
-                        for prop in prop_list:
-                            rows.append((field_name, snap, subhalo_index, float(prop)))      
+        rows = []
+        for field_name, sub_dict in _lenstars.items():
+            for snap, ss_dict in sub_dict.items():
+                for subhalo_index, prop_list in ss_dict.items():
+                    for prop in prop_list:
+                        rows.append((field_name, snap, subhalo_index, float(prop)))      
 
-            flat_array = np.array(rows, dtype=self.sub_secprog_prop.dtype)
+        flat_array = np.array(rows, dtype=self.sub_secprog_prop.dtype)
 
-            combine = np.concatenate((self.sub_secprog_prop, flat_array))
+        combine = np.concatenate((self.sub_secprog_prop, flat_array))
 
         if save:
             print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy\n".format(self.SNAP_INT))
@@ -747,19 +748,128 @@ class tree:
             print("Done!\n")
 
         return None
+ 
+    # def get_sub_tree_props(self, recompute=False, save=False):
+    #     '''
+    #         This function is responsible for getting the tree-pertinent information
+    #         for the subhalos which we have walked up the tree.
+    #     '''
+
+    #     if recompute==False:
+    #         print("Function get_sub_tree_props is being run with recompute=False\n")
+    #         print("Now loading the saved file of subhalo tree-pertinent properties of main progenitors\n")
+    #         with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
+    #             self.sub_tree_prop = pickle.load(fp)
+    #         print("Done\n")
+            
+    #         print("Now loading the saved file of secondary progenitor properties\n")
+    #         self.sub_secprog_prop = np.load(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(self.SNAP_INT), allow_pickle=True)
+    #         print("Done\n")
+    #     else:
+    #         # Get tree-relative ID and index of subhalos at Snap_0
+    #         try:
+    #             self.root_tree_ID
+    #             self.root_index
+    #         except:
+    #             self.get_root_info()
+
+    #         print("Loading the number of stars in each subhalo\n")
+    #         self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
+    #         print("Done\n")
+
+    #         try:
+    #             self.sub_tree_prop['LenStars']
+    #         except:
+    #             print("Subhalo File properties are not yet computed so we must get them")
+    #             self.get_sub_file_props(recompute=False, save=False)
+    #             print("Done!\n")
+
+    #         # Walk the tree
+    #         try:
+    #             self.mp_idx
+    #         except:
+    #             self.walk_subs()
+
+    #         self.sub_tree_prop['LenStars'] = np.zeros( (self.snap_0, len(self.root_index)) )
+    #         print("Dimension of root_index is {:d}\n".format(len(self.root_index)))
+    #         for s in range(self.snap_0-self.min_snap+1):
+    #             print("Now going through snap {:d} of the merger tree\r".format(self.snap_0-s))
+    #             self.sub_tree_prop['LenStars'][self.snap_0-s-1,:] = self.sub_lenstars[self.mp_idx[self.snap_0-s-1]]
+    #             zero_mask = self.mp_idx[self.snap_0-s-1]==-1
+    #             print("Dimension of zero mask is {:d}\n".format(np.where(zero_mask)[0].shape[0]))
+    #             self.sub_tree_prop['LenStars'][self.snap_0-s-1,zero_mask] = np.zeros(np.where(zero_mask)[0].shape[0])
+            
+    #         if save:
+    #             print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_main_prog_10_SNAP_INT.p\n")
+    #             with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
+    #                 pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
+    #             print("Done!\n")
+
+    #         print("Done with the main progenitors!\n")
+
+    #         try:
+    #             self.sec_prog
+    #         except:
+    #             try:
+    #                 self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
+    #             except:
+    #                 self.get_mp_secondary_progenitors(recompute=False, save=False, sep_int=1)
+
+    #         print("Cleaning unused tree properties\n")
+    #         self.clean_tree()
+    #         print("Done Cleaning\n")
+
+    #         try:
+    #             self.sub_secprog_prop
+    #         except:
+    #             self.get_secprog_props(recompute=False, save=False)
+
+    #         print("Building lookup index for secondary progenitors\n")
+    #         index_dict = build_lookup_index(self.sec_prog, name1='snap', name2='subhalo', name3='prog')
+
+    #         _lenstars = {'LenStars': {}}
+    #         for s in range(1,self.snap_0-self.min_snap+1):
+    #             snap_index = self.snap_0 - s - 1
+    #             _lenstars['LenStars'][snap_index] = {}
+    #             print("Now going through snap {:d} of the merger tree\n".format(snap_index+1))
+
+    #             for ii in range(len(self.root_index)):
+    #                 print("Now going through subhalo {:d} of the merger tree\r".format(ii), end='\r')
+    #                 sec_prog_snap = index_dict[snap_index].get(ii, [])
+    #                 _lenstars['LenStars'][snap_index][ii] = self.sub_lenstars[sec_prog_snap]
+
+    #         rows = []
+    #         for field_name, sub_dict in _lenstars.items():
+    #             for snap, ss_dict in sub_dict.items():
+    #                 for subhalo_index, prop_list in ss_dict.items():
+    #                     for prop in prop_list:
+    #                         rows.append((field_name, snap, subhalo_index, float(prop)))      
+
+    #         flat_array = np.array(rows, dtype=self.sub_secprog_prop.dtype)
+
+    #         combine = np.concatenate((self.sub_secprog_prop, flat_array))
+
+    #     if save:
+    #         print("Now saving the subhalo tree-pertinent properties in "+self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy\n".format(self.SNAP_INT))
+    #         np.save(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(self.SNAP_INT), combine, allow_pickle=True)
+    #         print("Done!\n")
+
+    #     return None
 
     def get_exsitu_stellar_mass(self, recompute=False, save=False):
         '''
             This function is responsible for getting the ex-situ stellar mass of subhalos
             at different snapshots.
+
+            This is done by summing up the masses of all secondary progenitors (non-main progenitors).
         '''
 
         # Check that LenStars is computed
         try:
-            self.sub_tree_prop['LenStars']
+            self.main_prop['LenStars']
         except:
-            print("Subhalo File properties are not yet computed so we must get them")
-            self.get_sub_tree_props(recompute=False, save=False)
+            print("Main progenitor properties are not yet computed")
+            self.get_main_prog_props(recompute=False, save=False)
             print("Done!\n")
 
         # Sum up the stellar mass of all secondary progenitors
@@ -768,168 +878,131 @@ class tree:
                 _len_stars = np.sum(self.sub_secprog_prop['LenStars'][self.snap_0-s-1][ii])
         
 
-    def get_secprog_props(self, recompute=False, save=False, sep_int=None):
-        '''
-            This function is responsible for getting the file-pertinent information
-            for the secondary progenitors of subhalos
-        '''
+    # def get_secprog_props(self, recompute=False, save=False, sep_int=None):
+    #     '''
+    #         This function is responsible for getting the file-pertinent information
+    #         for the secondary progenitors of subhalos
+    #     '''
 
-        if sep_int is None:
-            sep_int = self.SNAP_INT
+    #     if sep_int is None:
+    #         sep_int = self.SNAP_INT
 
-        if recompute==False:
-            print("Function get_secprog_props is being run with recompute=False\n")
-            print("Now loading the saved file of secondary progenitor properties\n")
-            self.sub_secprog_prop = np.load(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), allow_pickle=True)
-            print("Done\n")
-        else:
-            # Get tree-relative ID and index of subhalos at Snap_0
-            try:
-                self.root_tree_ID
-                self.root_index
-            except:
-                self.get_root_info()
+    #     if recompute==False:
+    #         print("Function get_secprog_props is being run with recompute=False\n")
+    #         print("Now loading the saved file of secondary progenitor properties\n")
+    #         self.sub_secprog_prop = np.load(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), allow_pickle=True)
+    #         print("Done\n")
+    #     else:
+    #         # Get tree-relative ID and index of subhalos at Snap_0
+    #         try:
+    #             self.root_tree_ID
+    #             self.root_index
+    #         except:
+    #             self.get_root_info()
             
-            print("Walking Tree (Secondary Progenitors Included)\n")
-            # Walk the tree
-            try:
-                self.sec_prog
-            except:
-                self.get_mp_secondary_progenitors(recompute=False, save=False)
+    #         print("Walking Tree (Secondary Progenitors Included)\n")
+    #         # Walk the tree
+    #         try:
+    #             self.sec_prog
+    #         except:
+    #             self.get_mp_secondary_progenitors(recompute=False, save=False)
 
-            print("Done Walking Tree (Secondary Progenitors Included)\n")
+    #         print("Done Walking Tree (Secondary Progenitors Included)\n")
 
-            _sub_secprog_prop = {}
-            _sub_secprog_prop['SubhaloMass'] = {}
-            _sub_secprog_prop['SubhaloMassType'] = {}
+    #         _sub_secprog_prop = {}
+    #         _sub_secprog_prop['SubhaloMass'] = {}
+    #         _sub_secprog_prop['SubhaloMassType'] = {}
 
-            # loading all data
-            print("Starting to load data\n")
-            for s in range(sep_int, self.snap_0-self.min_snap+1, sep_int): 
-                print("Getting the tree-relevant IDs and Indexes of subhalos in snapshot\n")
-                treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
+    #         # loading all data
+    #         print("Starting to load data\n")
+    #         for s in range(sep_int, self.snap_0-self.min_snap+1, sep_int): 
+    #             print("Getting the tree-relevant IDs and Indexes of subhalos in snapshot\n")
+    #             treeID, treeIndex, Nfile = self._sub_treeindex(snap=self.snap_0-s)
 
-                # get all the interesting properties stored in the group-files, for all available snapshots
-                ################ READING SINGLE-FILES ###################
-                total_Nsub = int(0)
-                for i in range(640):
-                    print("Reading file {:d} of group {:d}\n".format(i, self.snap_0-s), end='\r')
-                    with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
-                        total_Nsub += int(f['Header'].attrs['Nsubhalos_ThisFile'])
+    #             # get all the interesting properties stored in the group-files, for all available snapshots
+    #             ################ READING SINGLE-FILES ###################
+    #             total_Nsub = int(0)
+    #             for i in range(640):
+    #                 print("Reading file {:d} of group {:d}\n".format(i, self.snap_0-s), end='\r')
+    #                 with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
+    #                     total_Nsub += int(f['Header'].attrs['Nsubhalos_ThisFile'])
 
-                _mass = np.empty(total_Nsub)
-                _mass_type = np.empty((total_Nsub, 6))
-                _pos = np.empty((total_Nsub, 3))
+    #             _mass = np.empty(total_Nsub)
+    #             _mass_type = np.empty((total_Nsub, 6))
+    #             _pos = np.empty((total_Nsub, 3))
 
-                cumsub = 0
-                for i in range(640):
-                    print("Reading file {:d} of group {:d}\n".format(i, self.snap_0-s), end='\r')
+    #             cumsub = 0
+    #             for i in range(640):
+    #                 print("Reading file {:d} of group {:d}\n".format(i, self.snap_0-s), end='\r')
 
-                    with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
-                        nsub = int(f['Header'].attrs['Nsubhalos_ThisFile'])
+    #                 with h5py.File(self.sim_base+'groups_{:03d}/fof_subhalo_tab_{:03d}.{:d}.hdf5'.format(self.snap_0-s,self.snap_0-s,i), 'r') as f:
+    #                     nsub = int(f['Header'].attrs['Nsubhalos_ThisFile'])
 
-                        try:
-                            f['Subhalo']['SubhaloMass']
-                        except:
-                            continue
+    #                     try:
+    #                         f['Subhalo']['SubhaloMass']
+    #                     except:
+    #                         continue
 
-                        _mass[cumsub:cumsub+nsub]              = f['Subhalo']['SubhaloMass']
-                        _mass_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloMassType']
-                        _pos[cumsub:cumsub+nsub,:]             = f['Subhalo']['SubhaloPos']
+    #                     _mass[cumsub:cumsub+nsub]              = f['Subhalo']['SubhaloMass']
+    #                     _mass_type[cumsub:cumsub+nsub,:]       = f['Subhalo']['SubhaloMassType']
+    #                     _pos[cumsub:cumsub+nsub,:]             = f['Subhalo']['SubhaloPos']
 
-                    cumsub += nsub
-                ################# DONE WITH THIS SNAPSHOT  ###################
-                print("Done with snap {:d}\n".format(self.snap_0-s))
+    #                 cumsub += nsub
+    #             ################# DONE WITH THIS SNAPSHOT  ###################
+    #             print("Done with snap {:d}\n".format(self.snap_0-s))
 
-                try:
-                    _sub_secprog_prop['SubhaloMass'][self.snap_0-s-1] = {}
-                    _sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1] = {}
+    #             try:
+    #                 _sub_secprog_prop['SubhaloMass'][self.snap_0-s-1] = {}
+    #                 _sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1] = {}
 
-                    # Map values to their positions in treeIndex
-                    treeIndex = np.array(treeIndex)
-                    val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
+    #                 # Map values to their positions in treeIndex
+    #                 treeIndex = np.array(treeIndex)
+    #                 val_to_idx = {val: idx for idx, val in enumerate(treeIndex)}
 
-                    # Flatten the progenitor list
-                    sel = (self.sec_prog['snap'] == self.snap_0-s-1) & (self.sec_prog['subhalo'] == ii)
-                    sp_index = [np.array(self.sec_prog['prog'][sel], dtype=int) for ii in range(len(self.root_index))]
-                    sp_1d = np.concatenate(sp_index)
+    #                 # Flatten the progenitor list
+    #                 sel = (self.sec_prog['snap'] == self.snap_0-s-1) & (self.sec_prog['subhalo'] == ii)
+    #                 sp_index = [np.array(self.sec_prog['prog'][sel], dtype=int) for ii in range(len(self.root_index))]
+    #                 sp_1d = np.concatenate(sp_index)
 
-                    # Create mask and array of positions in treeIndex
-                    mask = np.isin(sp_1d, treeIndex)
-                    positions = np.array([val_to_idx[val] for val in sp_1d[mask]])
+    #                 # Create mask and array of positions in treeIndex
+    #                 mask = np.isin(sp_1d, treeIndex)
+    #                 positions = np.array([val_to_idx[val] for val in sp_1d[mask]])
 
-                    # Lengths of original arrays
-                    len_array = np.array([len(x) for x in sp_index])
-                    cut_idx = np.r_[0, len_array.cumsum()]
+    #                 # Lengths of original arrays
+    #                 len_array = np.array([len(x) for x in sp_index])
+    #                 cut_idx = np.r_[0, len_array.cumsum()]
 
-                    # Count how many were kept in each chunk
-                    len_mask = np.add.reduceat(mask, cut_idx[:-1])
-                    cl_m = np.r_[0, len_mask.cumsum()]
+    #                 # Count how many were kept in each chunk
+    #                 len_mask = np.add.reduceat(mask, cut_idx[:-1])
+    #                 cl_m = np.r_[0, len_mask.cumsum()]
 
-                    # Rebuild output with treeIndex positions instead of values
-                    self.out = [positions[i:j] for i, j in zip(cl_m[:-1], cl_m[1:])]
+    #                 # Rebuild output with treeIndex positions instead of values
+    #                 self.out = [positions[i:j] for i, j in zip(cl_m[:-1], cl_m[1:])]
 
-                    for ii in range(len(self.root_index)):
-                        _sub_secprog_prop['SubhaloMass'][self.snap_0-s-1][ii] = _mass[self.out[ii]]
-                        _sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1][ii] = _mass_type[self.out[ii],...]
+    #                 for ii in range(len(self.root_index)):
+    #                     _sub_secprog_prop['SubhaloMass'][self.snap_0-s-1][ii] = _mass[self.out[ii]]
+    #                     _sub_secprog_prop['SubhaloMassType'][self.snap_0-s-1][ii] = _mass_type[self.out[ii],...]
 
-                except:
-                    print("FAILED for snapshot {:d}\n".format(self.snap_0-s))
+    #             except:
+    #                 print("FAILED for snapshot {:d}\n".format(self.snap_0-s))
 
-            if save:
-                print("Starting to flatten data and prepare it for saving \n")
-                rows = []
-                for field_name, sub_dict in _sub_secprog_prop.items():
-                    for snap, ss_dict in sub_dict.items():
-                        for subhalo_index, prop_list in ss_dict.items():
-                            for prop in prop_list:
-                                if isinstance(prop, (list, tuple, np.ndarray)):
-                                    for i, p in enumerate(prop):
-                                        rows.append((f"{field_name}_{i}", snap, subhalo_index, float(p)))
-                                else:
-                                    rows.append((field_name, snap, subhalo_index, float(prop)))                    
+    #         if save:
+    #             print("Starting to flatten data and prepare it for saving \n")
+    #             rows = []
+    #             for field_name, sub_dict in _sub_secprog_prop.items():
+    #                 for snap, ss_dict in sub_dict.items():
+    #                     for subhalo_index, prop_list in ss_dict.items():
+    #                         for prop in prop_list:
+    #                             if isinstance(prop, (list, tuple, np.ndarray)):
+    #                                 for i, p in enumerate(prop):
+    #                                     rows.append((f"{field_name}_{i}", snap, subhalo_index, float(p)))
+    #                             else:
+    #                                 rows.append((field_name, snap, subhalo_index, float(prop)))                    
 
-                # Convert to a NumPy structured array
-                dtype = np.dtype([('name', '<U50'), ('snap', np.int32), ('subhalo', np.int32), ('prop', np.float64)])
-                flat_array = np.array(rows, dtype=dtype)
+    #             # Convert to a NumPy structured array
+    #             dtype = np.dtype([('name', '<U50'), ('snap', np.int32), ('subhalo', np.int32), ('prop', np.float64)])
+    #             flat_array = np.array(rows, dtype=dtype)
 
-                self.sub_secprog_prop = flat_array
+    #             self.sub_secprog_prop = flat_array
 
-                np.save(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), self.sub_secprog_prop, allow_pickle=True)
-
-    def get_ms_exsitu(self, recompute=False, save=False):
-        #TODO: This function is completely wrong at the moment, we need to correct it and check the estimation of the ex-situ stellar mass.
-        
-        if recompute==False:
-            print("Function get_ms_exsitu is being run with recompute=False\n")
-            np.load(self.TREE_BASE+"ms_exsitu.npy", allow_pickle=True)
-            print("Done\n")
-        else:
-            try:
-                self.sub_secprog_prop
-            except:
-                self.get_secprog_props(recompute=False, save=False)
-
-            try:
-                self.root_index
-            except:
-                self.get_root_info()
-
-            try:
-                self.sub_tree_prop
-            except:
-                self.get_sub_tree_props(recompute=False, save=False)
-
-            self.sp_props_dict = build_lookup_index(self.sub_secprog_prop, name1='name', name2='snap', name3='subhalo', name4='prop')
-
-            self.ms_exsitu = np.zeros((self.snap_0,len(self.root_index)), dtype=int)
-
-            for i in range(self.snap_0-self.min_snap):
-                print(f"Processing snapshot {self.snap_0-i}")
-                for j in range(len(self.root_index)):
-                    self.ms_exsitu[self.snap_0-i-1,j] = np.sum(self.sp_props_dict['LenStars'][self.snap_0-i-2][j]) - self.sub_tree_prop['LenStars'][self.snap_0-i-2,j]
-
-            if save:
-                np.save(self.TREE_BASE+"ms_exsitu.npy", ms_exsitu, allow_pickle=True)
-
-        return None
+    #             np.save(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), self.sub_secprog_prop, allow_pickle=True)
