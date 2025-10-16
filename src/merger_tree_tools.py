@@ -33,6 +33,37 @@ def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
 
     return q
 
+from collections import defaultdict
+
+def build_lookup_index(struct_array, name1='snap', name2='subhalo', name3='prog', name4=None):
+    """
+    Build a fast (name1, name2) -> list-of-name3 lookup dictionary
+    from a structured NumPy array.
+
+    Parameters
+    ----------
+    struct_array : np.ndarray
+        Structured array with fields 'name1', 'name2', and 'name3'.
+
+    Returns
+    -------
+    dict
+        Nested dict of form index[name1][name2] = list of name3 values
+    """
+    if name4 is None:
+        index = defaultdict(lambda: defaultdict(list))
+        for row in struct_array:
+            index[row[name1]][row[name2]].append(row[name3])
+    else:
+        print("Entering the 4th name")
+        index = defaultdict(lambda: defaultdict( lambda: defaultdict(list)))
+        counter=0
+        for row in struct_array:
+            if counter%1000000==0:
+                print("Done with {:d} rows".format(counter))
+            index[row[name1]][row[name2]][row[name3]].append(row[name4])
+            counter+=1
+    return index
 
 class tree:
 
@@ -559,7 +590,7 @@ class tree:
 
             # For loop over all the possible halos at a certain snapshot
             print("Starting the Loop")
-            _sec_prog = {self.snap_0 - 1 - sep_int*i:{} for i in range(1, int(self.snap_0/sep_int))} # This will then start at 253
+            _sec_prog = {self.snap_0 - 1 - sep_int*i:{} for i in range(1, int(self.snap_0/sep_int))} # This will then start at 262
             for ii in range(len(self.sub_tree_index)):
                 tree_offset = self.tree_offsets[self.sub_tree_ID[ii]]
                 print('Done for halo {:d}'.format(ii), end='\r')
@@ -622,8 +653,7 @@ class tree:
             with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", 'rb') as fp:
                 self.sub_tree_prop = pickle.load(fp)
             print("Done\n")
-            return None
-
+            
             print("Now loading the saved file of secondary progenitor properties\n")
             self.sub_secprog_prop = np.load(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(self.SNAP_INT), allow_pickle=True)
             print("Done\n")
@@ -686,19 +716,8 @@ class tree:
             except:
                 self.get_secprog_props(recompute=False, save=False)
 
-            from collections import defaultdict
-
-            print("Pre-indexing the secondary progenitors\n")
-            index_dict = defaultdict(lambda: defaultdict(list))
-
-            counter = 0
-            for row in self.sec_prog:
-                if counter%1000000==0:
-                    print("Now going through row {:d} of the secondary progenitors\r".format(counter//264), end='\r')
-                snap = row['snap']
-                subhalo = row['subhalo']
-                index_dict[snap][subhalo].append(row['prog'])
-                counter+=1
+            print("Building lookup index for secondary progenitors\n")
+            index_dict = build_lookup_index(self.sec_prog, name1='snap', name2='subhalo', name3='prog')
 
             _lenstars = {'LenStars': {}}
             for s in range(1,self.snap_0-self.min_snap+1):
@@ -877,3 +896,40 @@ class tree:
                 self.sub_secprog_prop = flat_array
 
                 np.save(self.TREE_BASE+"props_sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), self.sub_secprog_prop, allow_pickle=True)
+
+    def get_ms_exsitu(self, recompute=False, save=False):
+        #TODO: This function is completely wrong at the moment, we need to correct it and check the estimation of the ex-situ stellar mass.
+        
+        if recompute==False:
+            print("Function get_ms_exsitu is being run with recompute=False\n")
+            np.load(self.TREE_BASE+"ms_exsitu.npy", allow_pickle=True)
+            print("Done\n")
+        else:
+            try:
+                self.sub_secprog_prop
+            except:
+                self.get_secprog_props(recompute=False, save=False)
+
+            try:
+                self.sub_tree_index
+            except:
+                self.get_sub_tree_info()
+
+            try:
+                self.sub_tree_prop
+            except:
+                self.get_sub_tree_props(recompute=False, save=False)
+
+            self.sp_props_dict = build_lookup_index(self.sub_secprog_prop, name1='name', name2='snap', name3='subhalo', name4='prop')
+
+            self.ms_exsitu = np.zeros((self.snap_0,len(self.sub_tree_index)), dtype=int)
+
+            for i in range(self.snap_0-self.min_snap):
+                print(f"Processing snapshot {self.snap_0-i}")
+                for j in range(len(self.sub_tree_index)):
+                    self.ms_exsitu[self.snap_0-i-1,j] = np.sum(self.sp_props_dict['LenStars'][self.snap_0-i-2][j]) - self.sub_tree_prop['LenStars'][self.snap_0-i-2,j]
+
+            if save:
+                np.save(self.TREE_BASE+"ms_exsitu.npy", ms_exsitu, allow_pickle=True)
+
+        return None
