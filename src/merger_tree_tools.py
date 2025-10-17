@@ -94,7 +94,7 @@ class tree:
         self.redshift = redshift[1:]
         self.expfactor = 1. / (1. + self.redshift)
 
-    def get_root_info(self, recompute=False, save=False):
+    def get_root_info(self, recompute=True, save=True):
         '''
             This function reads the tree-relevant ID and index of subhalos in group snap_0.
             It stores the information in self.root_tree_ID, self.root_index and self.ifile.
@@ -591,64 +591,56 @@ class tree:
             # For loop over all the possible halos at a certain snapshot
             print("Starting the Loop")
             _sec_prog = {self.snap_0 - 1 - sep_int*i:{} for i in range(1, int(self.snap_0/sep_int))} # This will then start at 262
-            for ii in range(len(self.root_index)):
+            for ii in range(300): #len(self.root_index)):
                 tree_offset = self.tree_offsets[self.root_tree_ID[ii]]
                 print('Done for halo {:d}'.format(ii), end='\r')
                 
                 snap_i = self.snap_0
-                roots = [ self.root_index[ii] ]
-                mp = roots[0]
+                mp = self.root_index[ii]
                 while snap_i > 34: # at such high redshifts the code will break down due to lack of subhalos anyway
-                    new_roots = [] # this will store all the progenitors during the loop
-                    for i in range(len(roots)):
-                        Np = self.sub_firstprog[roots[i] + tree_offset]
-                        while Np != -1:
-                            new_roots.append( np.int64(Np) )
-                            Np = self.sub_nextprog[Np + tree_offset]
+                    f_a_s = [] # this will store all the progenitors during the loop
+                    Np = self.sub_firstprog[mp + tree_offset]
+                    while Np != -1:
+                        print(Np, end=',')
+                        f_a_s.append( np.int64(Np) )
+                        Np = self.sub_nextprog[Np + tree_offset]
 
-                    # In the case where sep_int=1 this is never really applied, because
-                    # it always gets passed through the line roots = [mp] below, before
-                    # returning to the loop
-                    roots = new_roots
-                    
                     snap_i -= 1
-
+                    
                     mp = self.sub_mainprog[mp + tree_offset] # pass to the next main progenitor
 
-                    if ( (self.snap_0 - snap_i)%sep_int==0 ):
-                        if len(new_roots)==0:
-                            _sec_prog[snap_i-1][ii] = []
-                        else:
-                            _sec_prog[snap_i-1][ii] = new_roots + tree_offset
-                        roots = [ mp ] # reset the root as being just the main progenitor
-                        if mp == -1:
-                            break
+                    if len(f_a_s)==0:
+                        _sec_prog[snap_i-1][ii] = [-1]
+                    else:
+                        _sec_prog[snap_i-1][ii] = f_a_s
+                    if mp == -1:
+                        break
             print("Finished")
 
-            print("Preparing data for being saved\n")
-            rows = []
-            for snap, sub_dict in _sec_prog.items():
-                for subhalo_index, prog_list in sub_dict.items():
-                    for prog in prog_list:
-                        rows.append( (snap, subhalo_index, prog) )
+            # print("Preparing data for being saved\n")
+            # rows = []
+            # for snap, sub_dict in _sec_prog.items():
+            #     for subhalo_index, prog_list in sub_dict.items():
+            #         for prog in prog_list:
+            #             rows.append( (snap, subhalo_index, prog) )
 
-            # Convert to a NumPy structured array
-            dtype = np.dtype([('snap', np.int32), ('subhalo', np.int32), ('prog', np.int64)])
-            print("Converting to a NumPy structured array\n")
-            flat_array = np.array(rows, dtype=dtype)
+            # # Convert to a NumPy structured array
+            # dtype = np.dtype([('snap', np.int32), ('subhalo', np.int32), ('prog', np.int64)])
+            # print("Converting to a NumPy structured array\n")
+            # flat_array = np.array(rows, dtype=dtype)
 
-            self.sec_prog = flat_array
+            # self.sec_prog = flat_array
 
-            if save:
-                print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy\n".format(sep_int))
-                np.save(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), flat_array, allow_pickle=True)
-                print("Done!\n")
+            # print("Done with secondary progenitors!\n")
+            # self.clean_tree()
+            # print("Tree cleaned!\n")
 
-        print("Done with secondary progenitors!\n")
-        self.clean_tree()
-        print("Tree cleaned!\n")
+            # if save:
+            #     print("Saving data at "+self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy\n".format(sep_int))
+            #     np.save(self.TREE_BASE+"sec_prog_{:d}_SNAP_INT_v1.npy".format(sep_int), flat_array, allow_pickle=True)
+            #     print("Done!\n")
 
-        return None
+        return _sec_prog
 
     def get_main_prog_props(self, recompute=False, save=False):
         '''
