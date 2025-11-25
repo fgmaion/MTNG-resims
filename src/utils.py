@@ -256,12 +256,13 @@ class split_halos():
             Function to get the fraction of gas in a selection, binned as a function of halo masses
         '''
 
-        bins = np.logspace(13, 14, nbins)
+        bins = np.logspace(12.5, 14.5, nbins)
 
-        _m500c = 1e10 * self.sim.fof['halo_m500c']
+        _m500c = 1e10 * self.sim.fof['halo_m500c'] / self.sim.Cosmology.pars['hubble']
+        _r500c = self.sim.fof['halo_r500c'] / self.sim.Cosmology.pars['hubble']
         _main_sub = self.sim.fof['halo_firstsub']
-        _mgas  = 1e10 * self.sim.sub['MassType'][:,0][_main_sub]
-        _mtot =  1e10 * np.sum(self.sim.sub['MassType'], axis=1)[_main_sub]
+        _mgas  = 1e10 * self.sim.sub['MassType'][:,0] / self.sim.Cosmology.pars['hubble']
+        _mtot =  1e10 * np.sum(self.sim.sub['MassType'], axis=1)[_main_sub] / self.sim.Cosmology.pars['hubble']
 
         counts     = {d:np.zeros(nbins-1) for d in range(draws)}
         weights    = {d:np.zeros(nbins-1) for d in range(draws)}
@@ -272,7 +273,10 @@ class split_halos():
             for m in range(len(sel_mask['sel'])):
                 if sel_mask['h_frac'][d][m]!=0:
                     
-                    mgas = _mgas[sel_mask['sel'][m][d]]
+                    d_sub = np.sqrt( np.sum( (self.sim.sub['pos'] - self.sim.sub['pos'][_main_sub[sel_mask['sel'][m][d]]])**2, axis=1 ) )
+                    rsel = np.where( d_sub < _r500c[sel_mask['sel'][m][d]] )[0]
+                    
+                    mgas = np.sum(_mgas[rsel])
                     mtot = _mtot[sel_mask['sel'][m][d]]
                     m500c = _m500c[sel_mask['sel'][m][d]]
 
@@ -512,7 +516,7 @@ def cross_match(zoom, snap, name=None):
     mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
 
     # Load halo selection
-    with open("/lscratch/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
         final_sel = []
         for line in f.readlines():
             final_sel.append(int(line.split()[0]))
@@ -535,7 +539,7 @@ def cross_match(zoom, snap, name=None):
     vmax_1 = zoom.sub['vmax'][zoom.fof['halo_firstsub'][ind]]
     vmax_2 = mtng.sub['vmax'][mtng.fof['halo_firstsub'][final_sel]]
 
-    d = metric(M2,M1,vmax_2,vmax_1,dist,5,1,1)
+    d = metric(M2,M1,vmax_2,vmax_1,dist,1,1,0)
 
     xmatch = np.zeros(len(M1), dtype=int)
     dmatch = np.zeros(len(M1))
@@ -873,7 +877,7 @@ def get_zoom_smf(zoom, snap=264, Nbins=50):
     m200b = np.log10(1e10 * mtng.fof['halo_m200b'])
     
     # load the halo-selection in the fiducial MTNG
-    with open("/lscratch/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
         final_sel = []
         for line in f.readlines():
             final_sel.append(int(line.split()[0]))
