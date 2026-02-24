@@ -143,7 +143,148 @@ class split_halos():
 
         return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / hist}
 
-    def halo_smf_draws(self, sel_mask=None, nbins=100, draws=1):
+    def get_mstar_30kpc(self, isub):
+        """
+            Calculates stellar mass within 30 kpc for a given subhalo ID.
+            Stellar mass is outputed in M_sun units.
+        """
+
+        arr_ids = self.sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")    
+        d_part  = self.sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / self.sim.Cosmology.pars['hubble'] # distances are in kpc
+
+        d = np.sqrt(np.sum(d_part**2, axis=1)) # in Mpc
+
+        sel = d < 30/1000 # get particles within 30 kpc
+        mstar = np.sum( self.sim.stars['mass'][arr_ids[sel]] ) / self.sim.Cosmology.pars['hubble'] # in Msun
+
+        # Apply Eddington bias correction from Behroozi+19
+        z = 0
+        sigma_eb = min(0.07 + 0.071*z, 0.3)
+        mstar *= 10**( np.random.normal(loc=0, scale=sigma_eb) )
+
+        return mstar
+
+    def get_mstar_30kpc_vec(self, isub_vector):
+            """
+            Calculates stellar mass within 30 kpc for a vector of subhalo IDs.
+            """
+            vectorized_func = np.vectorize(self.get_mstar_30kpc, otypes=[np.float64])
+            
+            # Now call the vectorized function, passing only the vector of inputs
+            return vectorized_func(isub_vector)
+
+    def get_mstar_2halfrad(self, isub):
+        """
+            Calculates stellar mass within the half-mass radius for a given subhalo ID.
+            Stellar mass is outputed in M_sun units.
+        """
+
+        r_star_half = self.sim.sub['HalfmassRadType'][:,4] * 1e3 / self.sim.header['HubbleParam']
+
+        arr_ids = self.sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")    
+        d_part  = self.sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / self.sim.Cosmology.pars['hubble'] # distances are in kpc
+
+        d = np.sqrt(np.sum(d_part**2, axis=1)) # in Mpc
+
+        sel = d < 2 * r_star_half[isub] / 1000
+        mstar_rhalf = np.sum( self.sim.stars['mass'][arr_ids[sel]] ) / self.sim.Cosmology.pars['hubble'] # in Msun
+
+        return mstar_rhalf
+
+    def get_mstar_2halfrad_vec(self, isub_vector):
+        """
+        Calculates stellar mass within the half-mass radius for a vector of subhalo IDs.
+        """
+        vectorized_func = np.vectorize(self.get_mstar_2halfrad, otypes=[np.float64])
+        
+        # Now call the vectorized function, passing only the vector of inputs
+        return vectorized_func(isub_vector)
+
+    def rhalf_m2half(self, sel_mask=None, nbins=100):
+        #TODO: This is still wrong, but I'm too hungry to correct it
+
+        bins = np.logspace(8, 13, nbins)
+        counts     = np.zeros(nbins-1)
+        rhalf      = np.zeros(nbins-1)
+        m2half_mean = np.zeros(nbins-1)
+
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
+
+        for m in range(len(sel_mask['sel'])):
+                if sel_mask['h_frac'][0][m]!=0:
+                    m2half = []
+                    for i in range(len(sel_mask['sel'][m][0])):
+                            sub_indices = np.arange(first[sel_mask['sel'][m][d][i]],first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]])
+                            m2half_ = self.get_mstar_2halfrad_vec( sub_indices )
+                            m2half.extend( m2half_ )
+                        
+                    m2half = 1e10 * np.array(m2half)
+
+                    ids = np.digitize(m2half, bins)
+                    counts_i = [np.sum( np.ones(len(m2half))[np.where(ids==j)]) for j in range(1,len(bins))]
+
+                    counts += counts_i
+                    rhalf  += rhalf / sel_mask['h_frac'][0][m]
+                    m2half_mean += [np.sum(m2half[np.where(ids==j)]) for j in range(1,len(bins))]
+
+        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+
+        for d in range(draws):
+            hist[d] *= norm
+            mstar_mean[d] = mstar_mean[d] / counts[d]
+
+        return  {'rhalf':rhalf, 'bins':bins, 'm2half':m2half_mean}
+
+    def bh_mf(self, sel_mask=None, nbins=100):
+        '''
+        Function to get the black-hole mass-function of a simulation
+        
+        Parameters
+        ----------
+        sel_mask: dict
+            dictionary containing the selection masks
+        nbins: int
+            number of bins in log(mhalo)
+        
+        Returns
+        -------
+        dict:
+            dictionary containing the stellar mass function, bin edges and mean stellar mass per halo
+        '''
+        
+        bins = np.logspace(6, 10.5, nbins)
+        counts     = np.zeros(nbins-1)
+        hist       = np.zeros(nbins-1)
+        mbh_mean = np.zeros(nbins-1)
+
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
+
+        for m in range(len(sel_mask['sel'])):
+            if sel_mask['h_frac'][0][m]!=0:
+                mbh = []
+                for i in range(len(sel_mask['sel'][m][0])):
+                    mbh.extend(self.sim.sub['BHMass'][first[sel_mask['sel'][m][0][i]]:first[sel_mask['sel'][m][0][i]]+nsubs[sel_mask['sel'][m][0][i]]] / self.sim.Cosmology.pars['hubble'])
+                
+                mbh = 1e10 * np.array(mbh)
+
+                ids = np.digitize(mbh, bins)
+                counts_i = [np.sum( np.ones(len(mbh))[np.where(ids==j)]) for j in range(1,len(bins))]
+
+                counts += counts_i
+                hist   += np.array(counts_i) / sel_mask['h_frac'][0][m]
+                mbh_mean += [np.sum(mbh[np.where(ids==j)]) for j in range(1,len(bins))]
+
+        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+        norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
+
+        hist *= norm
+        mbh_mean = mbh_mean / counts
+
+        return  {'bhmf':hist, 'bins':bins, 'mbh':mbh_mean}
+
+    def halo_smf_draws(self, sel_mask=None, nbins=100, draws=1, m_30kpc=False):
         '''
         Function to get the stellar mass function of a selection, binned as a function of halo masses
         
@@ -162,7 +303,7 @@ class split_halos():
             dictionary containing the stellar mass function, bin edges and mean stellar mass per halo
         '''
         
-        bins = np.logspace(9.5, 12, nbins)
+        bins = np.logspace(9, 12.5, nbins)
         counts     = {d:np.zeros(nbins-1) for d in range(draws)}
         hist       = {d:np.zeros(nbins-1) for d in range(draws)}
         mstar_mean = {d:np.zeros(nbins-1) for d in range(draws)}
@@ -175,7 +316,12 @@ class split_halos():
                 if sel_mask['h_frac'][d][m]!=0:
                     mstar = []
                     for i in range(len(sel_mask['sel'][m][d])):
-                        mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]] / self.sim.Cosmology.pars['hubble'])
+                        if m_30kpc is True:
+                            sub_indices = np.arange(first[sel_mask['sel'][m][d][i]],first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]])
+                            mstar_ = self.get_mstar_30kpc_vec( sub_indices )
+                            mstar.extend( mstar_ )
+                        else:
+                            mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]] / self.sim.Cosmology.pars['hubble'])
                     
                     mstar = 1e10 * np.array(mstar)
 
@@ -256,7 +402,7 @@ class split_halos():
             Function to get the fraction of gas in a selection, binned as a function of halo masses
         '''
 
-        bins = np.logspace(12.5, 14.5, nbins)
+        bins = np.logspace(12.0, 14.5, nbins)
 
         _m500c = 1e10 * self.sim.fof['halo_m500c'] / self.sim.Cosmology.pars['hubble']
         _r500c = self.sim.fof['halo_r500c'] / self.sim.Cosmology.pars['hubble']
@@ -294,6 +440,50 @@ class split_halos():
             m500c_mean[d] /= counts[d]
 
         return {'f_gas':fgas, 'm500c':m500c_mean, 'counts':counts}
+
+    def halo_gas_frac_v2(self, sel_mask=None, draws=1, nbins=100):
+        '''
+            Function to get the fraction of gas in a selection, binned as a function of halo masses
+        '''
+
+        bins = np.logspace(12.0, 14.5, nbins)
+
+        _m500c = 1e10 * self.sim.fof['halo_m500c'] / self.sim.Cosmology.pars['hubble']
+        _r500c = self.sim.fof['halo_r500c'] / self.sim.Cosmology.pars['hubble']
+
+        counts     = {d:np.zeros(nbins-1) for d in range(draws)}
+        weights    = {d:np.zeros(nbins-1) for d in range(draws)}
+        fgas       = {d:np.zeros(nbins-1) for d in range(draws)}
+        m500c_mean = {d:np.zeros(nbins-1) for d in range(draws)}
+
+        for d in range(draws):
+            for m in range(len(sel_mask['sel'])):
+                if sel_mask['h_frac'][d][m]!=0:
+                    # Get particles in halo
+                    d_gas = self.sim.get_halo_particles(ihalo=sel_mask['sel'][m][d][0], ptype=0, relative=True) / self.sim.Cosmology.pars['hubble']
+                    m_gas = self.sim.get_halo_particles(ihalo=sel_mask['sel'][m][d][0], ptype=0, key='mass')
+
+                    # Restrict to r500c
+                    gas_sel = np.sqrt( np.sum( d_gas**2, axis=1 ) ) < _r500c[sel_mask['sel'][m][d]]
+                    mgas_500 = 1e10 * np.sum(m_gas[gas_sel]) / self.sim.Cosmology.pars['hubble']
+
+                    m500c = _m500c[sel_mask['sel'][m][d]]
+
+                    ids = np.digitize(m500c, bins)
+
+                    counts_i = np.array([np.sum( np.ones(len(m500c))[np.where(ids==j)]) for j in range(1,len(bins))])
+                    counts[d] += counts_i
+                    weights[d] += counts_i / sel_mask['h_frac'][d][m] 
+
+                    fgas[d] += np.array([np.sum((mgas_500/m500c)[np.where(ids==j)]) for j in range(1,nbins)]) / sel_mask['h_frac'][d][m]
+                    m500c_mean[d] += [np.sum(m500c[np.where(ids==j)]) for j in range(1,nbins)]
+
+        for d in range(draws):
+            fgas[d] /= weights[d]
+            m500c_mean[d] /= counts[d]
+
+        return {'f_gas':fgas, 'm500c':m500c_mean, 'counts':counts}
+
 
     def halo_SFR(self, mhalo_edges=None, sel_mask=None, vmax_sel=False, draws=1, nbins=100):
         '''
@@ -510,6 +700,13 @@ def cross_match(zoom, snap, name=None):
     import numpy.ma as ma
     import scipy
 
+    if name is not None:
+        try:
+            load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
+            return load_match
+        except:
+            pass
+
     # Load MTNG
     mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
     mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
@@ -549,10 +746,12 @@ def cross_match(zoom, snap, name=None):
         metr[i] = d[i].min()
         xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
         dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
+
     if name is None:
         return {'ind':xmatch, 'd':dmatch}
     else:
-        return {name: {'ind':xmatch, 'd':dmatch}}
+        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        return {'ind':xmatch, 'd':dmatch}
 
 def cross_match_zooms(zoom1, zoom2):
     '''
@@ -711,7 +910,7 @@ def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, base
 
     return  {'smf':norm * counts, 'bins':bins, 'mstar':mstar_mean / counts}
 
-def camels_gas_frac(id_name, par, nbins=20, hfac=0.6711):
+def camels_gas_frac(id_name, par, nbins=10, hfac=0.6711):
     '''
     '''
 
@@ -733,7 +932,7 @@ def camels_gas_frac(id_name, par, nbins=20, hfac=0.6711):
     # close file
     f.close()
 
-    bins = np.logspace(10, 15, nbins)
+    bins = np.logspace(12.5, 14.5, nbins)
     
     f_gas = np.zeros(nbins-1)
     m500c_mean = np.zeros(nbins-1)
@@ -905,5 +1104,23 @@ def get_zoom_smf(zoom, snap=264, Nbins=50):
 
     return zoom_smf
 
+def get_mtng_bhmf(mtng, nbins=20):
+    
+    bins = np.logspace(6, 10.5, nbins)
 
+    mbh = mtng.sub['BHMass'] / mtng.Cosmology.pars['hubble']
+    mbh = 1e10 * np.array(mbh)
 
+    ids = np.digitize(mbh, bins)
+    counts = [np.sum( np.ones(len(mbh))[np.where(ids==j)]) for j in range(1,len(bins))]
+    hist   = np.array(counts)
+
+    mbh_mean = np.array([np.sum(mbh[np.where(ids==j)]) for j in range(1,len(bins))])
+
+    bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+    norm = 1 / ( ( mtng.header['BoxSize'] / mtng.Cosmology.pars['hubble'] )**3 * bin_width )
+
+    hist *= norm
+    mbh_mean = mbh_mean / counts
+
+    return  {'bhmf':hist, 'bins':bins, 'mbh':mbh_mean}
