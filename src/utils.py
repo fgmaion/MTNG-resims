@@ -201,21 +201,24 @@ class split_halos():
         return vectorized_func(isub_vector)
 
     def rhalf_m2half(self, sel_mask=None, nbins=100):
-        #TODO: This is still wrong, but I'm too hungry to correct it
-
+        
         bins = np.logspace(8, 13, nbins)
         counts     = np.zeros(nbins-1)
-        rhalf      = np.zeros(nbins-1)
+        rhalf_mean      = np.zeros(nbins-1)
         m2half_mean = np.zeros(nbins-1)
 
         first = self.sim.fof['halo_firstsub']
         nsubs = self.sim.fof['halo_nsubs']
+        
+        r_star_half = self.sim.sub['HalfmassRadType'][:,4] * 1e3 / self.sim.header['HubbleParam']
 
         for m in range(len(sel_mask['sel'])):
                 if sel_mask['h_frac'][0][m]!=0:
+                    rhalf = []
                     m2half = []
                     for i in range(len(sel_mask['sel'][m][0])):
-                            sub_indices = np.arange(first[sel_mask['sel'][m][d][i]],first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]])
+                            sub_indices = np.arange(first[sel_mask['sel'][m][0][i]],first[sel_mask['sel'][m][0][i]]+nsubs[sel_mask['sel'][m][0][i]])
+                            rhalf.extend(r_star_half[sub_indices])
                             m2half_ = self.get_mstar_2halfrad_vec( sub_indices )
                             m2half.extend( m2half_ )
                         
@@ -225,16 +228,13 @@ class split_halos():
                     counts_i = [np.sum( np.ones(len(m2half))[np.where(ids==j)]) for j in range(1,len(bins))]
 
                     counts += counts_i
-                    rhalf  += rhalf / sel_mask['h_frac'][0][m]
+                    rhalf_mean[ids]  += rhalf / sel_mask['h_frac'][0][m]
                     m2half_mean += [np.sum(m2half[np.where(ids==j)]) for j in range(1,len(bins))]
 
-        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
+        rhalf_mean = rhalf_mean / counts
+        m2half_mean = m2half_mean / counts
 
-        for d in range(draws):
-            hist[d] *= norm
-            mstar_mean[d] = mstar_mean[d] / counts[d]
-
-        return  {'rhalf':rhalf, 'bins':bins, 'm2half':m2half_mean}
+        return  {'rhalf':rhalf_mean, 'm2half':m2half_mean}
 
     def bh_mf(self, sel_mask=None, nbins=100):
         '''
@@ -446,7 +446,7 @@ class split_halos():
             Function to get the fraction of gas in a selection, binned as a function of halo masses
         '''
 
-        bins = np.logspace(12.0, 14.5, nbins)
+        bins = np.logspace(11.0, 14.5, nbins)
 
         _m500c = 1e10 * self.sim.fof['halo_m500c'] / self.sim.Cosmology.pars['hubble']
         _r500c = self.sim.fof['halo_r500c'] / self.sim.Cosmology.pars['hubble']
@@ -670,12 +670,12 @@ class split_halos():
 
         return  {'f_gas':f_gas, 'm500':m500c_mean}
 
-def metric(m1,m2,v1,v2,eul_dist,a,b,c):
+# def metric(m1,m2,v1,v2,eul_dist,fbad,a,b,c,d):
 
-    d_m = np.abs( (1 - m1[...,np.newaxis]/m2)/0.2 )
-    d_v = np.abs( (1 - v1[...,np.newaxis]/v2)/0.2 )
+#     d_m = np.abs( (1 - m1[...,np.newaxis]/m2)/0.2 )
+#     d_v = np.abs( (1 - v1[...,np.newaxis]/v2)/0.2 )
 
-    return a*eul_dist + d_m*b + d_v*c
+#     return a*eul_dist + d_m*b + d_v*c + (fbad/0.01)*d
 
 def cross_match(zoom, snap, name=None):
     '''
@@ -750,7 +750,7 @@ def cross_match(zoom, snap, name=None):
     if name is None:
         return {'ind':xmatch, 'd':dmatch}
     else:
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/vmax_cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
         return {'ind':xmatch, 'd':dmatch}
 
 def cross_match_zooms(zoom1, zoom2):
