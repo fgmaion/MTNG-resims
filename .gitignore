@@ -5,3 +5,7 @@
 /halo_selection
 /Notebooks/.ipynb_checkpoints
 /bug_tests/.ipynb_checkpoints
+/results
+/gp_train_results
+/scrips/__pycache__
+/mcmc_chains
