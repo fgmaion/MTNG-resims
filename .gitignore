@@ -6,6 +6,7 @@
 /Notebooks/.ipynb_checkpoints
 /bug_tests/.ipynb_checkpoints
 /results
+/results/fgas/*
 /gp_train_results
 /scrips/__pycache__
 /mcmc_chains
