@@ -179,15 +179,15 @@ class split_halos():
             Stellar mass is outputed in M_sun units.
         """
 
-        r_star_half = self.sim.sub['HalfmassRadType'][:,4] * 1e3 / self.sim.header['HubbleParam']
+        r_star_half = self.sim.sub['HalfmassRadType'][:,4] / self.sim.header['HubbleParam']
 
         arr_ids = self.sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")    
         d_part  = self.sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / self.sim.Cosmology.pars['hubble'] # distances are in kpc
 
         d = np.sqrt(np.sum(d_part**2, axis=1)) # in Mpc
 
-        sel = d < 2 * r_star_half[isub] / 1000
-        mstar_rhalf = np.sum( self.sim.stars['mass'][arr_ids[sel]] ) / self.sim.Cosmology.pars['hubble'] # in Msun
+        sel = d < 2 * r_star_half[isub] # get particles within 2*half-mass radius
+        mstar_rhalf = 1e10 * np.sum( self.sim.stars['mass'][arr_ids[sel]] ) / self.sim.Cosmology.pars['hubble'] # in Msun
 
         return mstar_rhalf
 
@@ -203,38 +203,58 @@ class split_halos():
     def rhalf_m2half(self, sel_mask=None, nbins=100):
         
         bins = np.logspace(8, 13, nbins)
-        counts     = np.zeros(nbins-1)
-        rhalf_mean      = np.zeros(nbins-1)
+        counts      = np.zeros(nbins-1)
+        rhalf_mean  = np.zeros(nbins-1)
         m2half_mean = np.zeros(nbins-1)
 
         first = self.sim.fof['halo_firstsub']
         nsubs = self.sim.fof['halo_nsubs']
         
-        r_star_half = self.sim.sub['HalfmassRadType'][:,4] * 1e3 / self.sim.header['HubbleParam']
-
-        for m in range(len(sel_mask['sel'])):
+        r_star_half = self.sim.sub['HalfmassRadType'][:,4] / self.sim.header['HubbleParam']
+        rhalf_total = []
+        m2half_total = []
+        if sel_mask is not None:
+            for m in range(len(sel_mask['sel'])):
                 if sel_mask['h_frac'][0][m]!=0:
                     rhalf = []
                     m2half = []
                     for i in range(len(sel_mask['sel'][m][0])):
-                            sub_indices = np.arange(first[sel_mask['sel'][m][0][i]],first[sel_mask['sel'][m][0][i]]+nsubs[sel_mask['sel'][m][0][i]])
-                            rhalf.extend(r_star_half[sub_indices])
-                            m2half_ = self.get_mstar_2halfrad_vec( sub_indices )
-                            m2half.extend( m2half_ )
+                        sub_indices = np.arange(first[sel_mask['sel'][m][0][i]],first[sel_mask['sel'][m][0][i]]+nsubs[sel_mask['sel'][m][0][i]])
+                        rhalf.extend(r_star_half[sub_indices])
+                        rhalf_total.extend(r_star_half[sub_indices])
+
+                        m2half_ = self.get_mstar_2halfrad_vec( sub_indices )
+                        m2half.extend( m2half_ )
+                        m2half_total.extend(m2half_)
                         
-                    m2half = 1e10 * np.array(m2half)
+                    m2half = np.array(m2half)
+                    rhalf  = np.array(rhalf)
 
                     ids = np.digitize(m2half, bins)
                     counts_i = [np.sum( np.ones(len(m2half))[np.where(ids==j)]) for j in range(1,len(bins))]
+                    counts += counts_i / sel_mask['h_frac'][0][m]
 
-                    counts += counts_i
-                    rhalf_mean[ids]  += rhalf / sel_mask['h_frac'][0][m]
-                    m2half_mean += [np.sum(m2half[np.where(ids==j)]) for j in range(1,len(bins))]
+                    rhalf_mean  += np.array([np.sum(rhalf[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
+                    m2half_mean += np.array([np.sum(m2half[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
 
-        rhalf_mean = rhalf_mean / counts
-        m2half_mean = m2half_mean / counts
+            rhalf_mean = rhalf_mean / counts
+            m2half_mean = m2half_mean / counts
 
-        return  {'rhalf':rhalf_mean, 'm2half':m2half_mean}
+        else:
+            rhalf = r_star_half
+            m2half_ = self.get_mstar_2halfrad_vec(np.arange(np.sum(self.sim.fof['halo_nsubs'])))
+
+            ids = np.digitize(m2half, bins)
+            counts_i = [np.sum( np.ones(len(m2half))[np.where(ids==j)]) for j in range(1,len(bins))]
+            counts += counts_i
+
+            rhalf_mean  += [np.sum(rhalf[np.where(ids==j)]) for j in range(1,len(bins))]
+            m2half_mean += [np.sum(m2half[np.where(ids==j)]) for j in range(1,len(bins))]
+
+            rhalf_mean = rhalf_mean / counts
+            m2half_mean = m2half_mean / counts
+
+        return  {'rhalf_mean':rhalf_mean, 'm2half_mean':m2half_mean, 'rhalf':rhalf_total, 'm2half':m2half_total, 'counts':counts}
 
     def bh_mf(self, sel_mask=None, nbins=100):
         '''
@@ -326,11 +346,11 @@ class split_halos():
                     mstar = 1e10 * np.array(mstar)
 
                     ids = np.digitize(mstar, bins)
-                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]  / sel_mask['h_frac'][d][m]
 
                     counts[d] += counts_i
-                    hist[d]   += np.array(counts_i) / sel_mask['h_frac'][d][m]
-                    mstar_mean[d] += [np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]
+                    hist[d]   += np.array(counts_i)
+                    mstar_mean[d] += [np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))] / sel_mask['h_frac'][d][m]
 
         bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
         norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
