@@ -533,35 +533,83 @@ class tree:
                 with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
                     pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
-    def get_all_progs(self, snap_0, depth):
+    def get_all_progs(self, snap_0, depth, recompute=False, save=False):
 
-        self.all_idx = {}
-        for ii in range(len(self.treeIndex)):
-            print('Done for halo {:d}'.format(ii), end='\r')
-            self.all_idx[ii] = {}
+        """
+        Builds a structured array of all progenitors for each halo in the merger tree up to a specified depth.
 
-            # starting at snap_0
-            roots = [self.treeIndex[ii]]
-            self.all_idx[ii][snap_0] = roots
-            
-            for i in range(depth):
-                snap = snap_0 - (i+1)
-                self.all_idx[ii][snap] = []
+        Args:
+            snap_0 (int): The starting snapshot index from which to trace progenitors backward.
+            depth (int): The number of snapshots to trace back for progenitors.
+            recompute (bool): If False, load from cached file. If True, recompute.
+            save (bool): If True and recomputing, save the result to disk.
+        """
+
+        fname = self.TREE_BASE + "all_progs_snap{:d}_depth{:d}.npy".format(snap_0, depth)
+
+        if recompute == False:
+            print("Function get_all_progs is being run with recompute=False\n")
+            print("Now loading the saved file of all progenitors from " + fname + "\n")
+            self.all_progs = np.load(fname, allow_pickle=True)
+            print("Done\n")
+            return None
+
+        else:
+            print("Reading tree")
+            # Read the tree
+            try:
+                self.tree_offsets
+                self.sub_mainprog
+                self.sub_nextprog
+                self.sub_firstprog
+            except:
+                self.read_tree_opt()
+
+            # Get tree-relative ID and index of subhalos at Snap_0
+            try:
+                self.root_tree_ID
+                self.root_index
+            except:
+                self.get_root_info()
+
+            rows = []
+            for ii in range(len(self.root_index)): # Doing this loop halo by halo
                 
-                for root in roots:
-                    fp = self.firstprog[ii][root] # first prog of root
-                    if fp!=-1:
-                        self.all_idx[ii][snap].append(fp)
-                        Np = self.nextprog[ii][fp]
+                tree_offset = self.tree_offsets[self.root_tree_ID[ii]]
+                root = [self.root_index[ii]]
+                
+                for t in range(depth):
+                    snap = snap_0 - t - 1 # Start from snap_0 - 1 and go backwards
 
-                        while Np != -1:
-                            self.all_idx[ii][snap].append(Np)
-                            Np = self.nextprog[ii][Np]
+                    roots = []
+                    for i in range(len(root)):
+                        fp = self.sub_firstprog[tree_offset + root[i]] # first prog of root
+                        if fp != -1:
+                            roots.append(fp)
+                            rows.append((snap, root[i], fp + tree_offset))
+                            Np = self.sub_nextprog[tree_offset + fp]
 
-                roots = self.all_idx[ii][snap]
+                            while Np != -1:
+                                rows.append((snap, root[i], Np + tree_offset))
+                                roots.append(Np)
+                                Np = self.sub_nextprog[tree_offset + Np]
+                        
+                    root = roots # update the root for the next iteration of the loop
+
+                print('Done for halo {:d}'.format(ii), end='\r')
+
+            print("\nConverting to a NumPy structured array\n")
+            dtype = np.dtype([('snap', np.int32), ('subhalo', np.int64), ('prog', np.int64)])
+            self.all_progs = np.array(rows, dtype=dtype)
+
+            if save:
+                print("Saving data at " + fname + "\n")
+                np.save(fname, self.all_progs, allow_pickle=True)
+                print("Done!\n")
+
+        return None
 
     def get_mp_secondary_progenitors(self, recompute=False, save=False, sep_int=None):
-
         if sep_int is None:
             sep_int = self.SNAP_INT
 
