@@ -3,7 +3,7 @@ import torch
 import gpytorch
 import os
 import copy
-from GP_models import fgas_Model
+from GP_models import SMF_Model
 
 wind_en_or      = []
 wind_vel_or     = []
@@ -13,7 +13,8 @@ ef_kin_or       = []
 ef_high_or      = []
 f_re_or         = []
 
-name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']# + ['bf_sim']
+
+name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']# + ['bf_sim'] 
 
 for i in range(len(name_list)):
     if i<30:
@@ -22,6 +23,7 @@ for i in range(len(name_list)):
         filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro.txt"
     if i==31:
         filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_bf.txt"
+
 
     with open(filename, 'r') as f:
         for line in f.readlines():
@@ -64,53 +66,56 @@ def pars(i, mstar):
 
     return arr
 
-
 # Load SMF
-Nbins_fgas = 8
+Nbins_smf = 15
 
-zoom_fgas = {}
+zoom_smf = {}
 for i in range(len(name_list)):
-    zoom_fgas[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_{}_Nbins{:d}.npy".format(name_list[i], Nbins_fgas), allow_pickle=True)[0]
+    zoom_smf[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf), allow_pickle=True)[0]
 
 # Filter NaNs
 for i in range(len(name_list)):
-    mask = ~np.isnan(zoom_fgas[name_list[i]]['m500c'][0])
+    mask = ~np.isnan(zoom_smf[name_list[i]]['smf'][0]) & ~np.isnan(zoom_smf[name_list[i]]['mstar'][0])
     
-    zoom_fgas[name_list[i]]['f_gas'][0] = zoom_fgas[name_list[i]]['f_gas'][0][mask]
-    zoom_fgas[name_list[i]]['m500c'][0] = zoom_fgas[name_list[i]]['m500c'][0][mask]
+    zoom_smf[name_list[i]]['smf'][0] = zoom_smf[name_list[i]]['smf'][0][mask]
+    zoom_smf[name_list[i]]['mstar'][0] = zoom_smf[name_list[i]]['mstar'][0][mask]
+
+smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins14.npy", allow_pickle=True).item()
+err_smf = np.std(smf_draws['ens_smf'], axis=0)
+err_log_smf = torch.asarray(err_smf / np.mean(smf_draws['ens_smf'], axis=0) / np.log(10), dtype=torch.float)
 
 # Define the training set
 train_sel = np.arange(31)
 
-pars_global = pars(train_sel[0], np.log10(zoom_fgas[name_list[train_sel[0]]]['m500c'][0]) )
-fgas_global = zoom_fgas[name_list[train_sel[0]]]['f_gas'][0]
+pars_global = pars(train_sel[0], np.log10(zoom_smf[name_list[train_sel[0]]]['mstar'][0]) )
+smf_global = np.log10(zoom_smf[name_list[train_sel[0]]]['smf'][0])
 
 for i in range(len(train_sel)):
-    m500c = np.log10(zoom_fgas[name_list[train_sel[i]]]['m500c'][0])
+    mstar = np.log10(zoom_smf[name_list[train_sel[i]]]['mstar'][0])
 
-    arr = pars(train_sel[i], m500c)
+    arr = pars(train_sel[i], mstar)
 
     pars_global = np.vstack((pars_global, arr))
 
-    fgas_global = np.hstack((fgas_global, zoom_fgas[name_list[train_sel[i]]]['f_gas'][0]))
+    smf_global = np.hstack((smf_global, np.log10(zoom_smf[name_list[train_sel[i]]]['smf'][0])))
 
 train_x = torch.asarray(pars_global, dtype=torch.float)
-train_y = torch.asarray(fgas_global, dtype=torch.float)
+train_y = torch.asarray(smf_global, dtype=torch.float)
 
 torch.set_num_threads(8)
 
 ### Define the GP model
 
 # initialize likelihood and model
-likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_constraint=gpytorch.constraints.GreaterThan(1e-6))
-model = fgas_Model(train_x, train_y, likelihood)
+likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(noise=err_log_smf**2, learn_additional_noise=True)
+model = SMF_Model(train_x, train_y, likelihood)
 
 # this is for running the notebook in our testing framework
 smoke_test = ('CI' in os.environ)
 #training_iter = 2 if smoke_test else 200
 
-n_restarts = 200
-steps_per_restart = 20
+n_restarts = 10
+steps_per_restart = 1000
 
 best_state = None
 best_loss = float('inf')
@@ -135,7 +140,7 @@ for r in range(n_restarts):
         # Output from model
         output = model(train_x)
         # Calc loss and backprop gradients
-        loss = -torch.sum(mll(output, train_y))
+        loss = -mll(output, train_y)
         loss.backward()
         optimizer.step()
 
@@ -158,8 +163,13 @@ for r in range(n_restarts):
 model.load_state_dict(best_state['model'])
 likelihood.load_state_dict(best_state['likelihood'])
 
+model.likelihood.second_noise_covar.noise = 0.1**2
+
 save_path = "/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/"
 
-torch.save(model, save_path+"full_model_fgas.pth")
-torch.save(likelihood, save_path+"full_likelihood_fgas.pth")
+#torch.save({'model_state_dict':model.state_dict(),
+#            'likelihood_state_dict':likelihood.state_dict()}, save_path + "model_smf")
+
+torch.save(model, save_path+"full_model_smf.pth")
+torch.save(likelihood, save_path+"full_likelihood_smf.pth")
 

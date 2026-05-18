@@ -3,7 +3,7 @@ import torch
 import gpytorch
 import os
 import copy
-from GP_models import SMF_Model
+from GP_models import BHMF_Model
 
 wind_en_or      = []
 wind_vel_or     = []
@@ -103,7 +103,7 @@ torch.set_num_threads(8)
 
 # initialize likelihood and model
 likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_constraint=gpytorch.constraints.GreaterThan(1e-2))
-model = SMF_Model(train_x, train_y, likelihood)
+model = BHMF_Model(train_x, train_y, likelihood)
 
 # this is for running the notebook in our testing framework
 smoke_test = ('CI' in os.environ)
@@ -162,4 +162,8 @@ save_path = "/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/"
 
 torch.save(model, save_path+"full_model_bhmf.pth")
 torch.save(likelihood, save_path+"full_likelihood_bhmf.pth")
+
+print(model.covar_module.base_kernel.lengthscale)
+print(model.covar_module.outputscale)
+print(torch.sqrt(model.likelihood.noise_covar.noise))
 
