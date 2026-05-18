@@ -7,11 +7,9 @@
 /bug_tests/.ipynb_checkpoints
 /results
 /results/fgas
-/results/fgas/*
 /gp_train_results
-/scrips/__pycache__
+/scripts/__pycache__
 /mcmc_chains
 /scripts/cross-validation/best_models_k10_nbins10
 /scripts/cross-validation/best_models_k10_nbins10/*
 /cross-match
-/cross-match/*

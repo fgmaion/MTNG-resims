@@ -1,0 +1,46 @@
+# Stitched galaxy stellar mass function: GAMA + SDSS
+#
+# Construction:
+#   - Faint/intermediate end (log M* < ~11.4): GAMA / Driver+2022
+#       Reference: Driver et al. 2022, MNRAS 513, 439 (Table 6)
+#       Original photometry: ProFound matched-aperture (Bellstedt+2020)
+#       Original SED fitting: ProSpect, Chabrier IMF (Robotham+2020)
+#   - Bright end  (log M* > ~11.4): SDSS / Bernardi+2018, mean of
+#       4 fixed-IMF variants (Ser/SerExp x M14d/M14df), with the
+#       systematic spread used as the uncertainty estimate.
+#       Reference: Bernardi et al. 2018, MNRAS 475, 757 (Tables B1-B2)
+#       Original photometry: PyMorph Sersic / Sersic+Exp (Meert+2015)
+#       Original SED fitting: Mendel+2014, FSPS, Chabrier IMF
+#   - Transition near log M* ~ 11.4. SDSS is downsampled to avoid it
+#     dominating over GAMA at intermediate masses.
+#
+# Cosmology / units:
+#   Original GAMA values (Driver+2022) reported in h70-units, i.e.
+#     equivalent to physical units at H0 = 70 km/s/Mpc (h70 = 1).
+#   Original SDSS values (Bernardi+2018) reported in physical units
+#     with H0 = 70.
+#   Both have been rescaled to h-units with h = 0.6774 (the value
+#     adopted in the MillenniumTNG simulation), giving:
+#     M*  in units of h^-2 M_sun
+#     Phi in units of h^3 Mpc^-3 dex^-1
+#
+# Columns:
+#   log_Mstar    : log10(M* / [h^-2 M_sun])
+#   log_Phi      : log10(Phi / [h^3 Mpc^-3 dex^-1])
+#   sigma_logPhi : 1-sigma uncertainty on log_Phi (symmetric, dex)
+#   source       : 'GAMA' or 'SDSS' indicating origin of each point
+log_Mstar,log_Phi,sigma_logPhi,source
+9.154,-1.929,0.02,GAMA
+9.404,-2.098,0.014,GAMA
+9.654,-2.185,0.01,GAMA
+9.904,-2.262,0.009,GAMA
+10.154,-2.317,0.009,GAMA
+10.404,-2.335,0.009,GAMA
+10.654,-2.404,0.01,GAMA
+10.904,-2.604,0.013,GAMA
+11.154,-2.965,0.019,GAMA
+11.404,-3.457,0.032,GAMA
+11.579,-3.811,0.12,SDSS
+11.779,-4.411,0.182,SDSS
+11.979,-5.159,0.266,SDSS
+12.179,-6.17,0.383,SDSS

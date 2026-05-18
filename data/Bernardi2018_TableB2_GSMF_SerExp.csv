@@ -1,0 +1,51 @@
+# Bernardi et al. 2018, MNRAS 475, 757 (arXiv:1710.07296)
+# Table B2 - Galaxy Stellar Mass Function, PyMorph SerExp photometry
+# Stellar masses from Mendel et al. 2014 (FSPS, Chabrier IMF), 5-band SDSS SED fits.
+# Two fixed-IMF columns: dusty (M14d) and dust-free (M14df) models.
+# Cosmology: H0 = 70 km/s/Mpc, flat LambdaCDM (Omega_m=0.3, Omega_L=0.7).
+#
+# Columns:
+#   log_Mstar              : log10(M*/M_sun)
+#   log_Phi_M14d_SerExp    : log10[ln(10) * M* * phi(M*)] -- dusty model     [Mpc^-3 dex^-1]
+#   log_Phi_M14df_SerExp   : log10[ln(10) * M* * phi(M*)] -- dust-free model [Mpc^-3 dex^-1]
+#
+# Note: This is log10[ln(10) * M* * phi(M*)], the conventional 'log dex^-1' form
+#       (dN per dex per Mpc^3). Compatible with Wang2024/Driver2022 GSMF columns
+#       once you account for h-units: Bernardi uses Mpc (h=0.7), not h^-1 Mpc.
+#       To convert Bernardi -> h-units: log_Mstar -= 2*log10(0.7) = +0.310
+#                                       log_Phi    += 3*log10(0.7) = -0.464
+# No error bars are tabulated in the paper.
+log_Mstar,log_Phi_M14d_SerExp,log_Phi_M14df_SerExp
+9.05,-1.944,-1.911
+9.15,-1.986,-1.942
+9.25,-2.002,-1.983
+9.35,-2.043,-2.009
+9.45,-2.093,-2.062
+9.55,-2.125,-2.096
+9.65,-2.148,-2.125
+9.75,-2.193,-2.162
+9.85,-2.225,-2.176
+9.95,-2.247,-2.209
+10.05,-2.261,-2.219
+10.15,-2.255,-2.217
+10.25,-2.267,-2.228
+10.35,-2.265,-2.228
+10.45,-2.298,-2.272
+10.55,-2.332,-2.299
+10.65,-2.379,-2.346
+10.75,-2.451,-2.42
+10.85,-2.523,-2.489
+10.95,-2.632,-2.602
+11.05,-2.76,-2.732
+11.15,-2.923,-2.894
+11.25,-3.128,-3.088
+11.35,-3.34,-3.298
+11.45,-3.601,-3.547
+11.55,-3.888,-3.804
+11.65,-4.185,-4.081
+11.75,-4.55,-4.395
+11.85,-4.909,-4.717
+11.95,-5.382,-5.096
+12.05,-5.884,-5.526
+12.15,-6.51,-5.985
+12.25,-7.159,-6.674

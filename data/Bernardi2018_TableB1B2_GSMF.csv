@@ -1,0 +1,54 @@
+# Bernardi et al. 2018, MNRAS 475, 757 (arXiv:1710.07296)
+# Tables B1 (Sersic) and B2 (SerExp) - Galaxy Stellar Mass Function
+# Photometry: PyMorph truncated Sersic / SerExp profiles (Meert+2015)
+# Stellar masses: Mendel+2014 FSPS SED fits, 5-band SDSS, Chabrier IMF
+# Cosmology: H0 = 70 km/s/Mpc, flat LCDM (Omega_m=0.3, Omega_L=0.7)
+#
+# Columns:
+#   log_Mstar    : log10(M*/M_sun)
+#   Ser_M14d     : log10[ln(10) * M* * phi(M*)] -- Sersic photometry, dusty     [Mpc^-3 dex^-1]
+#   Ser_M14df    : log10[ln(10) * M* * phi(M*)] -- Sersic photometry, dust-free [Mpc^-3 dex^-1]
+#   SerExp_M14d  : log10[ln(10) * M* * phi(M*)] -- SerExp photometry, dusty     [Mpc^-3 dex^-1]
+#   SerExp_M14df : log10[ln(10) * M* * phi(M*)] -- SerExp photometry, dust-free [Mpc^-3 dex^-1]
+#
+# Notes:
+#  - Phi convention is log10[ln(10) * M* * phi(M*)] = dN per dex per Mpc^3.
+#  - Units are physical (Mpc, M_sun) at H0=70, NOT h-units.
+#    To convert to h-units (h=0.7): log_Mstar -= 2*log10(0.7) = +0.310
+#                                   log_Phi   += 3*log10(0.7) = -0.464
+#  - No error bars tabulated. As an effective uncertainty, the half-spread
+#    between M14d and M14df captures the dominant dust-systematic.
+log_Mstar,Ser_M14d,Ser_M14df,SerExp_M14d,SerExp_M14df
+9.05,-1.955,-1.922,-1.944,-1.911
+9.15,-1.993,-1.946,-1.986,-1.942
+9.25,-1.999,-1.982,-2.002,-1.983
+9.35,-2.043,-2.011,-2.043,-2.009
+9.45,-2.092,-2.058,-2.093,-2.062
+9.55,-2.121,-2.098,-2.125,-2.096
+9.65,-2.15,-2.131,-2.148,-2.125
+9.75,-2.196,-2.157,-2.193,-2.162
+9.85,-2.229,-2.183,-2.225,-2.176
+9.95,-2.25,-2.209,-2.247,-2.209
+10.05,-2.262,-2.214,-2.261,-2.219
+10.15,-2.269,-2.231,-2.255,-2.217
+10.25,-2.279,-2.232,-2.267,-2.228
+10.35,-2.282,-2.247,-2.265,-2.228
+10.45,-2.301,-2.274,-2.298,-2.272
+10.55,-2.339,-2.308,-2.332,-2.299
+10.65,-2.385,-2.356,-2.379,-2.346
+10.75,-2.442,-2.411,-2.451,-2.42
+10.85,-2.514,-2.484,-2.523,-2.489
+10.95,-2.603,-2.578,-2.632,-2.602
+11.05,-2.714,-2.689,-2.76,-2.732
+11.15,-2.864,-2.837,-2.923,-2.894
+11.25,-3.037,-3.003,-3.128,-3.088
+11.35,-3.236,-3.2,-3.34,-3.298
+11.45,-3.461,-3.416,-3.601,-3.547
+11.55,-3.721,-3.658,-3.888,-3.804
+11.65,-3.996,-3.909,-4.185,-4.081
+11.75,-4.317,-4.209,-4.55,-4.395
+11.85,-4.69,-4.527,-4.909,-4.717
+11.95,-5.103,-4.883,-5.382,-5.096
+12.05,-5.587,-5.285,-5.884,-5.526
+12.15,-6.261,-5.754,-6.51,-5.985
+12.25,-6.81,-6.327,-7.159,-6.674
