@@ -76,6 +76,59 @@ class split_halos():
 
         return {'sel':fof_choice, 'h_frac':halo_frac}
 
+    # Hardcoded fiducial-zoom cosmology. FILL IN THE ACTUAL VALUES.
+    _FIDUCIAL_COSMO = {
+        'tau':    0.0965,
+        'ns':     0.9667,
+        'sigma8': 0.8159,
+    }
+
+    def _load_sim_at_snap(self, snap, name='fiducial'):
+        """Load a bacco.Simulation at an arbitrary snapshot."""
+        base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/{}/hydro_output/".format(name)
+
+        return bacco.Simulation(
+            basedir=base,
+            halo_file="groups_{0:03d}/fof_subhalo_tab_{0:03d}".format(snap),
+            sim_format='TNG500', fixedPk=True, use_orphans=False,
+            tau=self._FIDUCIAL_COSMO['tau'],
+            ns=self._FIDUCIAL_COSMO['ns'],
+            sigma8=self._FIDUCIAL_COSMO['sigma8'],
+            use_ids=False,
+            tree_file="groups_{0:03d}/subhalo_prog_{0:03d}".format(snap),
+            dm_file="snapdir_{0:03d}/snapshot_{0:03d}".format(snap),
+            numpart=4320,
+        )
+
+    def get_mstar_30kpc_general(self, sim, isub, z):
+        """
+        Stellar mass within 30 PHYSICAL kpc for a subhalo in the given sim, in Msun.
+        Assumes get_halo_star_particles(..., relative=True) returns comoving Mpc/h.
+        """
+        arr_ids = sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")
+        d_part  = sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / sim.Cosmology.pars['hubble']
+        # d_part is now comoving Mpc
+
+        a = 1.0 / (1.0 + z)
+        d_phys = a * np.sqrt(np.sum(d_part**2, axis=1))   # physical Mpc
+
+        sel = d_phys < 30e-3   # 30 physical kpc
+        mstar = np.sum(sim.stars['mass'][arr_ids[sel]]) / sim.Cosmology.pars['hubble']  # Msun
+
+        # Eddington bias correction (Behroozi+19)
+        sigma_eb = min(0.07 + 0.071 * z, 0.3)
+        mstar *= 10**(np.random.normal(loc=0, scale=sigma_eb))
+
+        return mstar
+
+    def get_mstar_30kpc_general_vec(self, sim, isub_vector, z):
+        """Vectorized version of get_mstar_30kpc_general over isub."""
+        f = np.vectorize(
+            lambda i: self.get_mstar_30kpc_general(sim, i, z),
+            otypes=[np.float64],
+        )
+        return f(isub_vector)
+
     def total_smf(self, nbins=100):
 
         bins = np.logspace(9, 12.5, nbins)
@@ -95,14 +148,14 @@ class split_halos():
 
         return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / hist}
 
-    def get_mstar_30kpc(self, isub):
+    def get_mstar_30kpc(self, isub, z):
         """
             Calculates stellar mass within 30 kpc for a given subhalo ID.
             Stellar mass is outputed in M_sun units.
         """
 
         arr_ids = self.sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")    
-        d_part  = self.sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / self.sim.Cosmology.pars['hubble'] # distances are in kpc
+        d_part  = self.sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / self.sim.Cosmology.pars['hubble']
 
         d = np.sqrt(np.sum(d_part**2, axis=1)) # in Mpc
 
@@ -110,20 +163,19 @@ class split_halos():
         mstar = np.sum( self.sim.stars['mass'][arr_ids[sel]] ) / self.sim.Cosmology.pars['hubble'] # in Msun
 
         # Apply Eddington bias correction from Behroozi+19
-        z = 0
         sigma_eb = min(0.07 + 0.071*z, 0.3)
         mstar *= 10**( np.random.normal(loc=0, scale=sigma_eb) )
 
         return mstar
 
-    def get_mstar_30kpc_vec(self, isub_vector):
+    def get_mstar_30kpc_vec(self, isub_vector, z):
             """
             Calculates stellar mass within 30 kpc for a vector of subhalo IDs.
             """
-            vectorized_func = np.vectorize(self.get_mstar_30kpc, otypes=[np.float64])
+            vectorized_func = np.vectorize(self.get_mstar_30kpc, otypes=[np.float64], excluded=['z'])
             
             # Now call the vectorized function, passing only the vector of inputs
-            return vectorized_func(isub_vector)
+            return vectorized_func(isub_vector, z=z)
 
     def get_mstar_2halfrad(self, isub):
         """
@@ -228,7 +280,7 @@ class split_halos():
                         sub_indices = np.arange(first[sel_mask['sel'][m][0][i]],first[sel_mask['sel'][m][0][i]]+nsubs[sel_mask['sel'][m][0][i]])
                         sSFR.extend(sSFR_array[sub_indices])
 
-                        mstar_ = 1e10 * self.get_mstar_30kpc_vec( sub_indices )
+                        mstar_ = 1e10 * self.get_mstar_30kpc_vec( sub_indices, z=0 )
                         mstar.extend( mstar_ )
                         
                     mstar = np.array(mstar)
@@ -264,7 +316,7 @@ class split_halos():
                     for i in range(len(sel_mask['sel'][m][0])):
                         central_index = first[sel_mask['sel'][m][0][i]]
                         
-                        mstar_30 = 1e10 * self.get_mstar_30kpc_vec( central_index )
+                        mstar_30 = 1e10 * self.get_mstar_30kpc_vec( central_index, z=0)
                         m200c_ = 1e10 * self.sim.fof['halo_m200c'][sel_mask['sel'][m][0][i]] / self.sim.Cosmology.pars['hubble']
 
                         smhm.append( mstar_30 / m200c_ )
@@ -373,64 +425,120 @@ class split_halos():
 
         return  {'bhmf':hist, 'bins':bins, 'mbh':mbh_mean}
 
-    def halo_smf_draws(self, sel_mask=None, nbins=100, draws=1, m_30kpc=False):
-        '''
-        Function to get the stellar mass function of a selection, binned as a function of halo masses
-        
+
+    def halo_smf_draws(self, sel_mask=None, nbins=100, draws=1, m_30kpc=False,
+                    depth=0, tree=None, name='fiducial'):
+        """
+        SMF of a selection, optionally at higher redshift via merger-tree progenitors.
+
+        For m_30kpc=True, masses are computed within 30 physical kpc of each subhalo,
+        using particles from the relevant snapshot.
+
         Parameters
         ----------
-        sel_mask: dict
-            dictionary containing the selection masks
-        nbins: int
-            number of bins in log(mhalo)
-        draws: int
-            number of selections contained in sel_mask
-        
-        Returns
-        -------
-        dict:
-            dictionary containing the stellar mass function, bin edges and mean stellar mass per halo
-        '''
-        
+        sel_mask : dict
+        nbins : int
+        draws : int
+        m_30kpc : bool
+            If True, compute aperture masses; if False, use catalog MassType[:,4].
+        depth : int
+            Number of snapshots to walk back from snap=264.
+        tree : tree object
+            Required if m_30kpc=True and depth>0.
+        name : str
+            Name of the zoom, used to build paths.
+        """
+
         bins = np.logspace(9, 12.5, nbins)
-        counts     = {d:np.zeros(nbins-1) for d in range(draws)}
-        hist       = {d:np.zeros(nbins-1) for d in range(draws)}
-        mstar_mean = {d:np.zeros(nbins-1) for d in range(draws)}
+        counts     = {d: np.zeros(nbins-1) for d in range(draws)}
+        hist       = {d: np.zeros(nbins-1) for d in range(draws)}
+        mstar_mean = {d: np.zeros(nbins-1) for d in range(draws)}
 
         first = self.sim.fof['halo_firstsub']
         nsubs = self.sim.fof['halo_nsubs']
 
+        snap = 264 - depth
+        sim_base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/{}/hydro_output/".format(name)
+        z = redshift_from_snap(snap, sim_base)
+
+        # High-z setup, only when needed
+        sim_hiz = None
+        inv_map = None
+        if m_30kpc and depth > 0:
+            if tree is None:
+                raise ValueError("tree object is required when m_30kpc=True and depth>0")
+            sim_hiz = self._load_sim_at_snap(snap, name=name)
+            inv_map = tree.build_inverse_treelink(snap=snap)
+
         for m in range(len(sel_mask['sel'])):
             for d in range(draws):
-                if sel_mask['h_frac'][d][m]!=0.0:
-                    mstar = []
-                    for i in range(len(sel_mask['sel'][m][d])):
-                        if m_30kpc is True:
-                            sub_indices = np.arange(first[sel_mask['sel'][m][d][i]],first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]])
-                            mstar_ = self.get_mstar_30kpc_vec( sub_indices )
-                            mstar.extend( mstar_ )
+                if sel_mask['h_frac'][d][m] == 0.0:
+                    continue
+
+                mstar = []
+                for i in range(len(sel_mask['sel'][m][d])):
+                    ihalo = sel_mask['sel'][m][d][i]
+                    sub_indices = np.arange(first[ihalo], first[ihalo] + nsubs[ihalo])
+
+                    if m_30kpc:
+                        if depth == 0:
+                            # z=0 aperture: use the existing self.sim
+                            mstar_ = self.get_mstar_30kpc_general_vec(self.sim, sub_indices, z=0)
                         else:
-                            start = first[sel_mask['sel'][m][d][i]]
-                            stop = start + nsubs[sel_mask['sel'][m][d][i]]
-                            mstar.extend(self.sim.sub['MassType'][:,4][start:stop] / self.sim.Cosmology.pars['hubble'])
-                    
-                    mstar = 1e10 * np.array(mstar)
+                            # Walk this halo's subhalos to get tree positions at the target snap
+                            tree.get_all_progs(snap_0=264, subhalo_indices=sub_indices,
+                                            depth=depth, recompute=True)
+                            rows = tree.all_progs
+                            snap_rows = rows[rows['snap'] == snap]
+                            prog_global = snap_rows['prog']
 
-                    ids = np.digitize(mstar, bins)
-                    counts_i = np.array([np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))])  / sel_mask['h_frac'][d][m]
+                            # Map global tree pos -> high-z catalog index
+                            pos = np.searchsorted(inv_map['global_tree_pos'], prog_global)
+                            pos_clipped = np.minimum(pos, len(inv_map['global_tree_pos']) - 1)
+                            valid = (pos < len(inv_map['global_tree_pos'])) & \
+                                    (inv_map['global_tree_pos'][pos_clipped] == prog_global)
+                            catalog_idx = inv_map['catalog_idx'][pos[valid]]
 
-                    counts[d] += counts_i
-                    hist[d]   += np.array(counts_i)
-                    mstar_mean[d] += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][d][m]
+                            if len(catalog_idx) > 0:
+                                mstar_ = self.get_mstar_30kpc_general_vec(sim_hiz, catalog_idx, z=z)
+                            else:
+                                mstar_ = np.array([], dtype=np.float64)
 
-        bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
-        norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
+                        mstar.extend(mstar_)
+                    else:
+                        start = first[ihalo]
+                        stop = start + nsubs[ihalo]
+                        mstar.extend(
+                            self.sim.sub['MassType'][:, 4][start:stop]
+                            / self.sim.Cosmology.pars['hubble']
+                        )
+
+                mstar = 1e10 * np.array(mstar)
+
+                if len(mstar) == 0:
+                    continue
+
+                ids = np.digitize(mstar, bins)
+                counts_i = np.array(
+                    [np.sum(np.ones(len(mstar))[np.where(ids == j)]) for j in range(1, len(bins))]
+                ) / sel_mask['h_frac'][d][m]
+
+                counts[d] += counts_i
+                hist[d]   += counts_i
+                mstar_mean[d] += np.array(
+                    [np.sum(mstar[np.where(ids == j)]) for j in range(1, len(bins))]
+                ) / sel_mask['h_frac'][d][m]
+
+        bin_width = np.log10(bins[1:]) - np.log10(bins[:-1])
+        norm = 1 / ((self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'])**3 * bin_width)
 
         for d in range(draws):
             hist[d] *= norm
-            mstar_mean[d] = mstar_mean[d] / counts[d]
+            nz = counts[d] > 0
+            hist[d] = hist[d][nz]
+            mstar_mean[d] = mstar_mean[d][nz] / counts[d][nz]
 
-        return  {'smf':hist, 'bins':bins, 'mstar':mstar_mean}
+        return {'smf': hist, 'bins': bins, 'mstar': mstar_mean}
 
     def halo_smf(self, Nhalos, h_frac, tree=None, nbins=100, snap=264):
         '''
@@ -1393,3 +1501,8 @@ def pars(i, mass):
                         np.ones(len(mass)) * f_re[i])).T
 
     return arr
+
+def redshift_from_snap(snap, sim_base):
+    with h5py.File(sim_base + "treedata/trees.0.hdf5", 'r') as f:
+        redshifts = f['TreeTimes']['Redshift'][...]
+    return redshifts[snap]

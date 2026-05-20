@@ -67,25 +67,65 @@ def build_lookup_index(struct_array, name1='snap', name2='subhalo', name3='prog'
 
 class tree:
 
-    def __init__(self, snap_0=264, tree_format='MTNG', name=None, to_read=None, SNAP_INT=None):
-        self.TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
-
+    def __init__(self, snap_0=264, tree_format='MTNG', name=None, to_read=None, SNAP_INT=None, sim=None):
+    
         self.snap_0 = snap_0
         self.tree_format = tree_format
 
         if tree_format == 'MTNG':
+            self.TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
             self.sim_base = "/cosmos_storage/simulations/TNG_Family/MTNG/"
             self.sim_0 = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=self.snap_0)
 
         elif tree_format == 'zoom':
-            self.sim_base = "/cosmos_storage/data_sharing/MN5_resims/"+name+"/hydro_output/"
-            self.sim_0 = bacco.utils.load_zoom(snap=self.snap_0, name=name)
+            self.sim_base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/"+name+"/hydro_output/"
+            self.TREE_BASE = self.sim_base + "treedata/"
+            self.sim_0 = sim
 
         self.to_read = to_read
         self.get_redshift()
 
         self.SNAP_INT = SNAP_INT
         self.min_snap = 44
+
+    # ---- in tree class (merger_tree_tools.py) ----
+
+    def build_inverse_treelink(self, snap):
+        """
+        Build a mapping from global tree position (tree_offsets[TreeID] + TreeIndex)
+        to high-z catalog subhalo index at the given snapshot.
+
+        Returns sorted arrays for use with np.searchsorted.
+        """
+        if self.tree_format == 'zoom':
+            n_files = 8
+        else:
+            n_files = 640
+
+        all_tree_ids = []
+        all_tree_indices = []
+
+        for file_number in range(n_files):
+            treelink = self.sim_base + "groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(
+                snap, snap, file_number)
+            try:
+                with h5py.File(treelink, 'r') as f:
+                    all_tree_ids.append(f['Subhalo']['TreeID'][...])
+                    all_tree_indices.append(f['Subhalo']['TreeIndex'][...])
+            except (FileNotFoundError, OSError):
+                break
+
+        all_tree_ids = np.concatenate(all_tree_ids)
+        all_tree_indices = np.concatenate(all_tree_indices)
+        catalog_idx = np.arange(len(all_tree_ids), dtype=np.int64)
+
+        global_tree_pos = self.tree_offsets[all_tree_ids] + all_tree_indices
+
+        sort_idx = np.argsort(global_tree_pos)
+        return {
+            'global_tree_pos': global_tree_pos[sort_idx],
+            'catalog_idx': catalog_idx[sort_idx],
+        }
 
     def get_redshift(self):
 
@@ -94,7 +134,7 @@ class tree:
         self.redshift = redshift[1:]
         self.expfactor = 1. / (1. + self.redshift)
 
-    def get_root_info(self, recompute=True, save=True):
+    def get_root_info(self, recompute=True, save=False):
         '''
             This function reads the tree-relevant ID and index of subhalos in group snap_0.
             It stores the information in self.root_tree_ID, self.root_index and self.ifile.
@@ -114,7 +154,12 @@ class tree:
             return None
         else:
             print( "Reading tree-relevant ID and index of subhalos in group {:d}".format(self.snap_0) )
-            for file_number in range(640):
+            if self.tree_format=='MTNG':
+                N_files = 640
+            elif self.tree_format=='zoom':
+                N_files = 8
+
+            for file_number in range(N_files):
                 print("Done with file {:d}".format(file_number), end="\r")
                 treelink = self.sim_base+"groups_{0:03}/subhalo_treelink_{1:03}.{2:01}.hdf5".format(self.snap_0, self.snap_0, file_number)
 
@@ -173,14 +218,51 @@ class tree:
     
     def read_tree_opt(self):
         
-        self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int64)
-        print("Done with offsets")
-        self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
-        print("Done with Mainprog")
-        self.sub_firstprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin", dtype=np.int64)
-        print("Done with FirstProg")
-        self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
-        print("Done with SecondaryProg")
+        if self.tree_format == 'MTNG':
+            self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int64)
+            print("Done with offsets")
+            self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
+            print("Done with Mainprog")
+            self.sub_firstprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin", dtype=np.int64)
+            print("Done with FirstProg")
+            self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
+            print("Done with SecondaryProg")
+
+        elif self.tree_format == 'zoom':
+            n_files = 8
+
+            offsets_per_file = []
+            tree_ids_per_file = []
+            mainprog_list = []
+            firstprog_list = []
+            nextprog_list = []
+
+            for i in range(n_files):
+                with h5py.File(self.TREE_BASE + "trees.{:d}.hdf5".format(i), 'r') as f:
+                    file_offsets = f['TreeTable']['StartOffset'][...]
+                    file_tree_ids = f['TreeTable']['TreeID'][...]
+                    mp = f['TreeHalos']['TreeMainProgenitor'][...]
+                    fp = f['TreeHalos']['TreeFirstProgenitor'][...]
+                    nxt = f['TreeHalos']['TreeNextProgenitor'][...]
+
+                # Shift this file's offsets into the global concatenated array
+                offsets_per_file.append(file_offsets)
+                tree_ids_per_file.append(file_tree_ids)
+                mainprog_list.append(mp)
+                firstprog_list.append(fp)
+                nextprog_list.append(nxt)
+
+            self.sub_mainprog  = np.concatenate(mainprog_list)
+            self.sub_firstprog = np.concatenate(firstprog_list)
+            self.sub_nextprog  = np.concatenate(nextprog_list)
+
+            # Build tree_offsets indexed by global TreeID, matching MTNG layout
+            all_offsets  = np.concatenate(offsets_per_file)
+            all_tree_ids = np.concatenate(tree_ids_per_file)
+
+            max_tree_id = all_tree_ids.max()
+            self.tree_offsets = np.full(max_tree_id + 1, -1, dtype=np.int64)
+            self.tree_offsets[all_tree_ids] = all_offsets
 
     def clean_tree(self):
         '''
@@ -533,7 +615,7 @@ class tree:
                 with open(self.TREE_BASE+"props_main_prog_10_SNAP_INT.p", "wb") as fp: 
                     pickle.dump(self.sub_tree_prop, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
-    def get_all_progs(self, snap_0, depth, recompute=False, save=False):
+    def get_all_progs(self, snap_0, depth, subhalo_indices=None, recompute=False, save=False):
 
         """
         Builds a structured array of all progenitors for each halo in the merger tree up to a specified depth.
@@ -541,6 +623,8 @@ class tree:
         Args:
             snap_0 (int): The starting snapshot index from which to trace progenitors backward.
             depth (int): The number of snapshots to trace back for progenitors.
+            subhalo_indices (array-like or None): Positional indices into self.root_index selecting
+                which subhalos to walk. If None, walk all.
             recompute (bool): If False, load from cached file. If True, recompute.
             save (bool): If True and recomputing, save the result to disk.
         """
@@ -551,6 +635,10 @@ class tree:
             print("Function get_all_progs is being run with recompute=False\n")
             print("Now loading the saved file of all progenitors from " + fname + "\n")
             self.all_progs = np.load(fname, allow_pickle=True)
+            if subhalo_indices is not None:
+                print("WARNING: subhalo_indices was provided but recompute=False. The cached file "
+                      "does not track which root subhalo each row belongs to, so no subset "
+                      "filtering can be applied. Returning the full cached array.\n")
             print("Done\n")
             return None
 
@@ -572,8 +660,14 @@ class tree:
             except:
                 self.get_root_info()
 
+            # Decide which subhalos to walk
+            if subhalo_indices is None:
+                ii_list = range(len(self.root_index))
+            else:
+                ii_list = list(subhalo_indices)
+
             rows = []
-            for ii in range(len(self.root_index)): # Doing this loop halo by halo
+            for ii in ii_list: # Doing this loop subhalo by subhalo
                 
                 tree_offset = self.tree_offsets[self.root_tree_ID[ii]]
                 root = [self.root_index[ii]]
@@ -596,19 +690,23 @@ class tree:
                         
                     root = roots # update the root for the next iteration of the loop
 
-                print('Done for halo {:d}'.format(ii), end='\r')
+                print('Done for subhalo {:d}'.format(ii), end='\r')
 
             print("\nConverting to a NumPy structured array\n")
             dtype = np.dtype([('snap', np.int32), ('subhalo', np.int64), ('prog', np.int64)])
             self.all_progs = np.array(rows, dtype=dtype)
 
             if save:
+                if subhalo_indices is not None:
+                    print("WARNING: save=True with a subhalo_indices subset will overwrite the "
+                          "cache at " + fname + " with only the subset's rows. Consider save=False "
+                          "for partial runs.\n")
                 print("Saving data at " + fname + "\n")
                 np.save(fname, self.all_progs, allow_pickle=True)
                 print("Done!\n")
 
         return None
-
+        
     def get_mp_secondary_progenitors(self, recompute=False, save=False, sep_int=None):
         if sep_int is None:
             sep_int = self.SNAP_INT
