@@ -8,12 +8,15 @@ import torch
 import gpytorch
 import emcee
 import corner
+
+import sys
+sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/scripts/train")
 from GP_models import SMF_Model, fgas_Model
 
 ###########################################
 # Define quantities which we will fit
 
-mcmc_type = 'fgas' # "smf", "fgas", "joint" or any of those with -BF in the end
+mcmc_type = 'joint' # "smf", "fgas", "joint" or any of those with -BF in the end
 reset = True
 ###########################################
 
@@ -26,7 +29,7 @@ par_range = 'regular'  #'regular' #'extended', #BF-included
 ###########################################
 # Choose the X-ray dataset we wish to fit
 
-dataset = 'kugel' # 'popesso' or 'kugel'
+dataset = 'popesso' # 'popesso' or 'kugel'
 ###########################################
 
 print("OMP_NUM_THREADS =", os.environ.get("OMP_NUM_THREADS"))
@@ -40,49 +43,21 @@ if dataset == 'popesso':
    err_fgas = np.asarray([0.006,0.013,0.011,0.014,0.013,0.013,0.014,0.016])
 
 elif dataset=='kugel':
-   m500 = np.asarray([13.89, 14.06, 14.23, 14.40, 14.57, 14.74, 14.91])
-   fgas = np.asarray([0.083, 0.094, 0.105, 0.115, 0.130, 0.130, 0.139])
-   err_fgas = np.asarray([0.002, 0.003, 0.005, 0.008, 0.002, 0.002, 0.003])
+   m500 = np.asarray([13.89, 14.06, 14.23, 14.40, 14.57])
+   fgas = np.asarray([0.083, 0.094, 0.105, 0.115, 0.130])
+   err_fgas = np.asarray([0.002, 0.003, 0.005, 0.008, 0.002])
 
-# Stellar Mass Function from  GAMA (corrected to h=0.7)
-# https://arxiv.org/pdf/2203.08539
-# For SDSS correction, add 0.0807 dex to number density
+gsmf = np.loadtxt('/cosmos_storage/home/fgmaion/MTNG-resims/data/GAMA_SDSS_stitched_GSMF_h0p6774.csv',
+                  delimiter=',', comments='#', skiprows=33,
+                  usecols=(0, 1, 2))
 
-GAMA = np.array([
-    [6.875, -0.691, 0.176],
-    [7.125, -1.084, 0.125],
-    [7.375, -1.011, 0.071],
-    [7.625, -1.349, 0.092],
-    [7.875, -1.287, 0.079],
-    [8.125, -1.544, 0.071],
-    [8.375, -1.669, 0.045],
-    [8.625, -1.688, 0.032],
-    [8.875, -1.795, 0.024],
-    [9.125, -1.886, 0.020],
-    [9.375, -2.055, 0.014],
-    [9.625, -2.142, 0.010],
-    [9.875, -2.219, 0.009],
-    [10.125, -2.274, 0.009],
-    [10.375, -2.292, 0.009],
-    [10.625, -2.361, 0.010],
-    [10.875, -2.561, 0.013],
-    [11.125, -2.922, 0.019],
-    [11.375, -3.414, 0.032],
-    [11.625, -4.704, 0.138]
-])
+def model_gsmf(gsmf, b_star, b_cv):
 
-GAMA_corr = np.zeros((GAMA.shape[0], 4))
-GAMA_corr[:,0] = GAMA[:,0] - 2*np.log10(0.7)
-GAMA_corr[:,1] = GAMA[:,1] + 3*np.log10(0.7)
-GAMA_corr[:,2] = GAMA[:,2]
+    gsmf_shifted = np.copy(gsmf)
+    gsmf_shifted[:,1] = gsmf_shifted[:,1] + np.log10(b_cv)
+    gsmf_shifted[:,0] = gsmf_shifted[:,0] + b_star
 
-def model_GAMA(GAMA_corr, b_star, b_cv):
-
-    GAMA_corr = np.copy(GAMA_corr)
-    GAMA_corr[:,1] = GAMA_corr[:,1] + np.log10(b_cv)
-    GAMA_corr[:,0] = GAMA_corr[:,0] + b_star
-
-    return GAMA_corr
+    return gsmf_shifted
 
 ##########################################################
 ################## Load Parameters #######################
@@ -131,15 +106,58 @@ ef_kin    = (np.asarray(ef_kin_or) - np.mean(ef_kin_or)) / np.std(ef_kin_or)
 ef_high   = (np.asarray(ef_high_or) - np.mean(ef_high_or)) / np.std(ef_high_or)
 f_re      = (np.asarray(f_re_or) - np.mean(f_re_or)) / np.std(f_re_or)
 
-###########################################################################
-######################## Load SMF & fgas GP Model ################################
+# ---------- 1. Define the emulator-error functions of mass ----------
+
+# SMF: per-bin CV error vector lives at the n_bins mass-bin centers
+smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins10.npy", allow_pickle=True).item()
+err_smf_per_bin = (np.std(smf_draws['ens_smf'], axis=0)
+                   / np.mean(smf_draws['ens_smf'], axis=0)
+                   / np.log(10) + 0.1)            # shape (n_bins,)
+mstar_bins = smf_draws['mstar'][0]  # <-- the mass-bin centers; adjust key name
+                                       #     to whatever your dict uses
+
+def sigma_smf_of_mass(mstar):
+    # Linear interpolation; extrapolate by clipping to the endpoint values
+    return np.interp(mstar, mstar_bins, err_smf_per_bin)
+
+# fgas: linear in log10(m500c)
+fgas_GP = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_fiducial_Nbins10.npy", allow_pickle=True)[0]
+m500c_train_vals = np.log10(fgas_GP['m500c'][0])     # <-- fixed: was `fgas`, a typo
+min_x, max_x = np.min(m500c_train_vals), np.max(m500c_train_vals)
+
+def sigma_fgas_of_mass(mhalo):
+    # Linear in mhalo, clipped at the endpoints to avoid extrapolation surprises
+    return 0.018 + (0.006 - 0.018) * (mhalo - min_x) / (max_x - min_x)
+
+# ---------- 3. Build likelihoods ----------
 
 if mcmc_type in ['smf', 'fgas', 'joint']:
     model_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_smf.pth")
-    likelihood_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_smf.pth")
-
     model_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_fgas.pth")
-    likelihood_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_fgas.pth")
+
+    # ---------- 2. Build training noise vectors of correct length ----------
+
+    # You need access to the training inputs. Either you saved them, or you can pull
+    # them from the model (ExactGP stores them as model.train_inputs[0]).
+    train_x_smf  = model_smf.train_inputs[0].cpu().numpy()    # shape (n_train_smf, 8)
+    train_x_fgas = model_fgas.train_inputs[0].cpu().numpy()   # shape (n_train_fgas, 8)
+
+    # First column is mass (mstar for SMF, log10 m500c for fgas), per your convention
+    train_mass_smf  = train_x_smf[:, 0]
+    train_mass_fgas = train_x_fgas[:, 0]
+
+    train_noise_smf  = torch.as_tensor(sigma_smf_of_mass(train_mass_smf)**2,  dtype=torch.float)
+    train_noise_fgas = torch.as_tensor(sigma_fgas_of_mass(train_mass_fgas)**2, dtype=torch.float)
+
+    likelihood_smf = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
+        noise=train_noise_smf, learn_additional_noise=False,
+    )
+    model_smf.likelihood = likelihood_smf  # attach
+
+    likelihood_fgas = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
+        noise=train_noise_fgas, learn_additional_noise=False,
+    )
+    model_fgas.likelihood = likelihood_fgas  # attach
 
 elif mcmc_type in ['smf-BF', 'fgas-BF', 'joint-BF']:
     model_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_smf_bf.pth")
@@ -199,62 +217,93 @@ def log_p(theta):
 
         return prior_bstar + prior_bcv
 
-def log_likelihood_joint(theta, data_dict, models_dict, w_smf, w_fgas):
+def log_likelihood_joint(theta, data_dict, models_dict, likelihood_dict, w_smf, w_fgas):
     """
-    Joint likelihood for SMF and Gas Fractions.
+    Joint likelihood for SMF and Gas Fractions, using full predictive covariance.
     data_dict: contains 'mstar', 'smf_obs', 'smf_err', 'mhalo', 'fgas_obs', 'fgas_err', 'mhalo_err'
     models_dict: contains 'gp_smf', 'gp_fgas'
+    likelihood_dict: part responsible for adding random noise components, besides unexplained variance
+    w_smf: weight that tells us wether to account for SMF during fits
+    w_fgas: same but for gas-fractions
     """
 
     theta_std = prepare_theta(theta)
-    
-    # --- Part A: SMF Likelihood ---
-    # Get the observational model
-    GAMA_data = model_GAMA(GAMA_corr, theta[7], theta[8])
 
-    obs_log_phi = GAMA_data[9:,1]
-    obs_uncertainty = GAMA_data[9:,2]
-    mstar = GAMA_data[9:,0]
-    
+    # --- Part A: SMF Likelihood ---
+    gsmf_data = model_gsmf(gsmf, theta[7], theta[8])
+
+    mstar = gsmf_data[:, 0]
+    obs_log_phi = gsmf_data[:, 1]
+    obs_uncertainty = gsmf_data[:, 2]
+
+    gp_noise_smf = torch.as_tensor(sigma_smf_of_mass(mstar)**2, dtype=torch.float)
+
     smf_input = np.hstack([mstar[:, None], np.repeat(theta_std[None, :7], len(mstar), axis=0)])
-    
-    with torch.no_grad(), gpytorch.settings.fast_pred_var():
-        pred_smf = models_dict['gp_smf'](torch.from_numpy(smf_input).float())
+
+    with torch.no_grad():
+        pred_smf = likelihood_dict['gp_smf'](
+            models_dict['gp_smf'](torch.from_numpy(smf_input).float()),
+            noise=gp_noise_smf,
+        )
         mu_smf = pred_smf.mean.numpy()
-        var_smf = pred_smf.variance.numpy() + data_dict['smf_err']**2
-    
-    lnL_smf = -0.5 * np.sum(((data_dict['smf_obs'] - mu_smf)**2 / var_smf) + np.log(2 * np.pi * var_smf))
+        cov_smf = pred_smf.covariance_matrix.numpy()
+
+    # Total covariance = GP covariance + diagonal observational noise
+    Sigma_smf = cov_smf + np.diag(obs_uncertainty**2)
+
+    lnL_smf = _gaussian_loglik(obs_log_phi - mu_smf, Sigma_smf)
+    if not np.isfinite(lnL_smf):
+        return -np.inf
 
     # --- Part B: Gas Fraction Likelihood ---
     mhalo = data_dict['mhalo']
-    # Halo mass might also need normalization if your GP was trained on standardized M_h
     fgas_input = np.hstack([mhalo[:, None], np.repeat(theta_std[None, :7], len(mhalo), axis=0)])
-    
-    # To handle M_h uncertainty properly, we enable gradients for the slope calculation
-    # If the GP is smooth, you can approximate this; here we use the predictive mean.
-    x_gas_torch = torch.from_numpy(fgas_input).float().requires_grad_(True)
-    
-    with torch.no_grad(), gpytorch.settings.fast_pred_var():
-        pred_fgas = models_dict['gp_fgas'](x_gas_torch)
-        mu_fgas = pred_fgas.mean
-        var_fgas_emu = pred_fgas.variance.detach().numpy()
-        
-        # # Calculate slope df/dmhalo to propagate M_halo uncertainty
-        # # This is the 'errors-in-variables' correction
-        # mu_fgas.sum().backward()
-        # slope = x_gas_torch.grad[:, 0].numpy() # Derivative w.r.t the first column (M_h)
-        
-    mu_fgas = mu_fgas.detach().numpy()
-    
-    # Total variance = GP_var + Obs_fgas_var + (slope * Obs_Mhalo_var)^2
-    var_fgas_total = var_fgas_emu + data_dict['fgas_err']**2 #+ (slope * data_dict['mhalo_err'])**2
-    
-    lnL_fgas = -0.5 * np.sum(((data_dict['fgas_obs'] - mu_fgas)**2 / var_fgas_total) + np.log(2 * np.pi * var_fgas_total))
+
+    gp_noise_fgas = torch.as_tensor(sigma_fgas_of_mass(mhalo)**2, dtype=torch.float)
+
+    with torch.no_grad():
+        pred_fgas = likelihood_dict['gp_fgas'](
+            models_dict['gp_fgas'](torch.from_numpy(fgas_input).float()),
+            noise=gp_noise_fgas,
+        )
+        mu_fgas = pred_fgas.mean.numpy()
+        cov_fgas = pred_fgas.covariance_matrix.numpy()
+
+    # Total covariance = GP covariance + diagonal observational noise on f_gas
+    # (M_halo uncertainty propagation omitted, as in your original)
+    Sigma_fgas = cov_fgas + np.diag(data_dict['fgas_err']**2)
+
+    lnL_fgas = _gaussian_loglik(data_dict['fgas_obs'] - mu_fgas, Sigma_fgas)
+    if not np.isfinite(lnL_fgas):
+        return -np.inf
 
     # --- Part C: Combined ---
     total_lnL = w_smf * lnL_smf + w_fgas * lnL_fgas + log_p(theta)
-    
+
     return total_lnL if np.isfinite(total_lnL) else -np.inf
+
+
+def _gaussian_loglik(residual, Sigma, jitter=1e-8):
+    """
+    Stable multivariate Gaussian log-likelihood via Cholesky:
+        -0.5 * [ r^T Sigma^-1 r + log|Sigma| + N log(2 pi) ]
+    """
+    n = residual.shape[0]
+    # Symmetrize defensively (covariance_matrix from GPyTorch can have tiny asymmetry)
+    Sigma = 0.5 * (Sigma + Sigma.T)
+    try:
+        L = np.linalg.cholesky(Sigma + jitter * np.eye(n))
+    except np.linalg.LinAlgError:
+        # Retry with larger jitter once
+        try:
+            L = np.linalg.cholesky(Sigma + 1e-4 * np.eye(n))
+        except np.linalg.LinAlgError:
+            return -np.inf
+
+    alpha = np.linalg.solve(L, residual)            # L alpha = r
+    quad = alpha @ alpha                             # r^T Sigma^-1 r
+    logdet = 2.0 * np.sum(np.log(np.diag(L)))        # log|Sigma|
+    return -0.5 * (quad + logdet + n * np.log(2 * np.pi))
 
 
 ##########################################################
@@ -262,9 +311,9 @@ def log_likelihood_joint(theta, data_dict, models_dict, w_smf, w_fgas):
 
 # Observations for SMF
 data_dict = {
-    'mstar':     np.array(GAMA_corr[9:,0]), # Mass bins
-    'smf_obs':   np.array(GAMA_corr[9:,1]), # log10(Phi)
-    'smf_err':   np.array(GAMA[9:,2]), # Uncertainty in log10(Phi)
+    'mstar':     np.array(gsmf[:,0]), # Mass bins
+    'smf_obs':   np.array(gsmf[:,1]), # log10(Phi)
+    'smf_err':   np.array(gsmf[:,2]), # Uncertainty in log10(Phi)
     
     # Observations for Gas Fractions
     'mhalo':     m500, # Halo mass bins (input)
@@ -275,13 +324,23 @@ data_dict = {
 
 # Wrap models
 models_dict = {
-    'gp_smf':  model_smf, # Your first trained GP
-    'gp_fgas': model_fgas # Your second trained GP
+    'gp_smf':  model_smf,
+    'gp_fgas': model_fgas
+}
+
+likelihood_dict = {
+    'gp_smf': likelihood_smf,
+    'gp_fgas': likelihood_fgas
 }
 
 # Ensure models are in evaluation mode
 for m in models_dict.values():
     m.eval()
+
+# Ensure likelihoods are in evaluation mode
+for l in likelihood_dict.values():
+    l.eval()
+
 
 ############################################################
 
@@ -302,17 +361,20 @@ def run_MCMC(w_smf, w_fgas):
     # Define where to save the results of this chain
     # Set up the backend
     # Don't forget to clear it in case the file already exists
-    filename = "/cosmos_storage/home/fgmaion/MTNG-resims/mcmc_chains/"+mcmc_type+"_"+par_range+"_"+dataset+"_chain.h5"
+    if mcmc_type in ['smf', 'smf-BF']:
+        filename = "/cosmos_storage/home/fgmaion/MTNG-resims/mcmc_chains/"+mcmc_type+"_"+par_range+"_chain.h5"
+    elif mcmc_type in ['fgas', 'fgas-BF', 'joint', 'joint-BF']:
+        filename = "/cosmos_storage/home/fgmaion/MTNG-resims/mcmc_chains/"+mcmc_type+"_"+par_range+"_"+dataset+"_chain.h5"
     backend = emcee.backends.HDFBackend(filename)
     if reset:
-    	backend.reset(nwalkers, ndim) # If you want to restart from your current progress, comment this line
+        backend.reset(nwalkers, ndim) # If you want to restart from your current progress, comment this line
 
     # Initialize the sampler
     sampler = emcee.EnsembleSampler(
         nwalkers, 
         ndim, 
         log_likelihood_joint, # Our joint function
-        args=(data_dict, models_dict, w_smf, w_fgas),
+        args=(data_dict, models_dict, likelihood_dict, w_smf, w_fgas),
 	backend=backend
     )
 
@@ -322,7 +384,7 @@ def run_MCMC(w_smf, w_fgas):
     # Initialize variables
     max_n = 100000        # Maximum number of steps to allow
     autocorr_tol = 0.01  # Tolerance for fractional change in tau (e.g., 1%)
-    min_steps = 20000     # Minimum number of steps before checking tau
+    min_steps = 50000     # Minimum number of steps before checking tau
     index = 0
     old_tau = np.inf
 
