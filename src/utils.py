@@ -14,12 +14,12 @@ class split_halos():
 
         self.m200b = 1e10 * self.sim.fof['halo_m200b']
         self.halo_vmax = self.sim.sub['vmax'][self.sim.fof['halo_firstsub']]
-        self.r200b = self.sim.fof['halo_r200b']
+        # self.r200b = self.sim.fof['halo_r200b']
 
         G_newton = 4.3009172706e-9 #Mpc/M_sun * (km/s)**2
 
-        self.halo_v200 = np.sqrt(G_newton*self.m200b/self.r200b)
-        self.vmax_v200 = self.halo_vmax / self.halo_v200
+        # self.halo_v200 = np.sqrt(G_newton*self.m200b/self.r200b)
+        # self.vmax_v200 = self.halo_vmax / self.halo_v200
 
 
     def q_pos(self, sim, npart=4320, BoxSize=500, corr_fac=125):
@@ -39,7 +39,7 @@ class split_halos():
 
         return q
 
-    def halo_sel(self, mhalo_edges=None, Nhalos=None, vmax_sel=False, draws=1):
+    def halo_sel(self, mhalo_edges=None, Nhalos=None, draws=1):
         '''
         Function to sample halos in mass-bins
 
@@ -49,89 +49,41 @@ class split_halos():
         bool:vmax_sel
         Whether to split the selection not only by mass, but by concentration as well
         '''
+
+        _m200b = self.m200b
+
+        fof_choice = {}
+        halo_frac = {d:[] for d in range(draws)}
         
-        import time
-        t0 = time.time()
+        for m in range(mhalo_edges.shape[0]):
+            # Filter halos in the current mass bin
+            in_mass_bin = (_m200b >= 10**mhalo_edges[m, 0]) & (_m200b < 10**mhalo_edges[m, 1])
+            sel_temp = np.where(in_mass_bin)[0]
 
-        # Total Mass
-        mhalos_tot = 0
-        nhalos = 0
-        
-        presel = self.m200b>10**mhalo_edges[0,0]
-        _m200b = self.m200b[presel]
-        _vmax_v200 = self.vmax_v200[presel]
+            if Nhalos is None:
+                # No sampling: return all halos in this bin, identical across draws
+                fof_choice[m] = {d: sel_temp for d in range(draws)}
+                for d in range(draws):
+                    halo_frac[d].append(1.0)
+                continue
 
-        print(time.time()-t0)
+            fof_choice[m] = {d: np.array([], dtype=int) for d in range(draws)}
 
-        if vmax_sel is True:
-            fof_choice = {}
-            halo_frac = {}
-            
-            for m in range(mhalo_edges.shape[0]):
-                fof_choice[m] = {d:[] for d in range(draws)}
-                halo_frac[m] = {d:[] for d in range(draws)}
-
-                vratio_m = _vmax_v200[np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b<10**mhalo_edges[m,1]) )]
-                spacing = ( len(vratio_m) - 1 ) // Nhalos
-                vratio_bins = np.sort(vratio_m)[np.array([i*spacing for i in range(Nhalos+1)])]
-
-                for v in range(Nhalos):
-                    # select galaxies in halos of given mass/concentration
-                    sel_temp = np.where( (_m200b>10**mhalo_edges[m,0]) & (_m200b<10**mhalo_edges[m,1]) & (_vmax_v200 > vratio_bins[v] ) & (_vmax_v200 < vratio_bins[v+1] ) )[0]
-                    
-                    if len(sel_temp)==0:
-                        continue
-
-                    for d in range(draws):
-                        fof_temp = np.random.choice(sel_temp, 1, replace=False)
-                        
-                        fof_choice[m][d].append(fof_temp[0])
-                        halo_frac[m][d].append(1 / len(sel_temp))
-
-        else:
-            fof_choice = {}
-            halo_frac = {d:[] for d in range(draws)}
-            mbin_tot = np.zeros(mhalo_edges.shape[0])
-
-            print(time.time()-t0)
-            
-            for m in range(mhalo_edges.shape[0]):
-                # Filter halos in the current mass bin
-                in_mass_bin = (_m200b > 10**mhalo_edges[m, 0]) & (_m200b < 10**mhalo_edges[m, 1])
-                sel_temp = np.where(in_mass_bin)[0]
-
-                if Nhalos is not None:
-                    fof_choice[m] = {d:[] for d in range(draws)}
-
-                    for d in range(draws):
-                        # sample those halos randomly
-                        fof_temp = np.random.choice(sel_temp, min(Nhalos, len(sel_temp)), replace=False)
-                        fof_choice[m][d].extend(fof_temp)
-
-                        halo_frac[d].append( min(Nhalos, len(sel_temp)) / len(sel_temp))
-        
-#                        fof_choice[m][d] = np.array(fof_choice[m])
-
-                else:
-                    fof_temp=sel_temp
-                    fof_choice[m] = fof_temp
-
-                    halo_frac = np.ones(len(fof_temp))
-
-
-        print(time.time()-t0)
-
+            n_draw = min(Nhalos, len(sel_temp))
+            for d in range(draws):
+                fof_choice[m][d] = np.random.choice(sel_temp, n_draw, replace=False)
+                halo_frac[d].append(n_draw / len(sel_temp))
 
         return {'sel':fof_choice, 'h_frac':halo_frac}
 
     def total_smf(self, nbins=100):
 
-        bins = np.logspace(8, 13, nbins)
+        bins = np.logspace(9, 12.5, nbins)
         counts     = np.zeros(nbins-1)
         hist       = np.zeros(nbins-1)
         mstar_mean = np.zeros(nbins-1)
 
-        sel = np.log10(1e10 * self.sim.fof['halo_m200b'][self.sim.sub['parent_halo']['index']]) > 11
+        sel = np.log10(1e10 * self.sim.fof['halo_m200b'][self.sim.sub['parent_halo']['index']]) > 9
         mstar = self.sim.sub['MassType'][sel,4] * 1e10 / self.sim.Cosmology.pars['hubble']
         ids = np.digitize(mstar, bins)
 
@@ -256,6 +208,123 @@ class split_halos():
 
         return  {'rhalf_mean':rhalf_mean, 'm2half_mean':m2half_mean, 'rhalf':rhalf_total, 'm2half':m2half_total, 'counts':counts}
 
+    def sSFR_mstar(self, sel_mask=None, nbins=100):
+        
+        bins = np.logspace(8, 13, nbins)
+        counts      = np.zeros(nbins-1)
+        sSFR_mean  = np.zeros(nbins-1)
+        mstar_mean = np.zeros(nbins-1)
+
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
+        
+        sSFR_array = self.sim.sub['SFR'] / ( 1e10 * self.sim.sub['MassType'][:,4] / self.sim.header['HubbleParam'] )
+        if sel_mask is not None:
+            for m in range(len(sel_mask['sel'])):
+                if sel_mask['h_frac'][0][m]!=0:
+                    sSFR = []
+                    mstar = []
+                    for i in range(len(sel_mask['sel'][m][0])):
+                        sub_indices = np.arange(first[sel_mask['sel'][m][0][i]],first[sel_mask['sel'][m][0][i]]+nsubs[sel_mask['sel'][m][0][i]])
+                        sSFR.extend(sSFR_array[sub_indices])
+
+                        mstar_ = 1e10 * self.get_mstar_30kpc_vec( sub_indices )
+                        mstar.extend( mstar_ )
+                        
+                    mstar = np.array(mstar)
+                    sSFR  = np.array(sSFR)
+
+                    ids = np.digitize(mstar, bins)
+                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]
+                    counts += counts_i / sel_mask['h_frac'][0][m]
+
+                    sSFR_mean  += np.array([np.sum(sSFR[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
+                    mstar_mean += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
+
+            sSFR_mean = sSFR_mean / counts
+            mstar_mean = mstar_mean / counts
+
+        return  {'sSFR_mean':sSFR_mean, 'mstar_mean':mstar_mean, 'counts':counts}
+
+    def smhm_ratio(self, sel_mask=None, nbins=100):
+        
+        bins = np.logspace(11, 15, nbins)
+        counts      = np.zeros(nbins-1)
+        smhm_mean  = np.zeros(nbins-1)
+        m200c_mean = np.zeros(nbins-1)
+
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
+        
+        if sel_mask is not None:
+            for m in range(len(sel_mask['sel'])):
+                if sel_mask['h_frac'][0][m]!=0:
+                    smhm = []
+                    m200c = []
+                    for i in range(len(sel_mask['sel'][m][0])):
+                        central_index = first[sel_mask['sel'][m][0][i]]
+                        
+                        mstar_30 = 1e10 * self.get_mstar_30kpc_vec( central_index )
+                        m200c_ = 1e10 * self.sim.fof['halo_m200c'][sel_mask['sel'][m][0][i]] / self.sim.Cosmology.pars['hubble']
+
+                        smhm.append( mstar_30 / m200c_ )
+                        m200c.append( m200c_ )
+                        
+                    m200c = np.array(m200c)
+                    smhm  = np.array(smhm)
+
+                    ids = np.digitize(m200c, bins)
+                    counts_i = [np.sum( np.ones(len(m200c))[np.where(ids==j)]) for j in range(1,len(bins))]
+                    counts += counts_i / sel_mask['h_frac'][0][m]
+
+                    smhm_mean  += np.array([np.sum(smhm[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
+                    m200c_mean += np.array([np.sum(m200c[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
+
+            smhm_mean = smhm_mean / counts
+            m200c_mean = m200c_mean / counts
+
+        return  {'smhm_mean':smhm_mean, 'm200c_mean':m200c_mean}
+
+    def bh_mstar(self, sel_mask=None, nbins=100):
+        
+        bins       = np.logspace(8, 13, nbins)
+        counts     = np.zeros(nbins-1)
+        mbh_mean   = np.zeros(nbins-1)
+        mstar_mean = np.zeros(nbins-1)
+
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
+        
+        if sel_mask is not None:
+            for m in range(len(sel_mask['sel'])):
+                if sel_mask['h_frac'][0][m]!=0:
+                    mbh = []
+                    mstar = []
+                    for i in range(len(sel_mask['sel'][m][0])):
+                        sub_indices = np.arange(first[sel_mask['sel'][m][0][i]],first[sel_mask['sel'][m][0][i]]+nsubs[sel_mask['sel'][m][0][i]])
+                        
+                        mbh_ = 1e10 * self.sim.sub['BHMass'][sub_indices] / self.sim.Cosmology.pars['hubble']
+                        mstar_ = self.get_mstar_2halfrad_vec(sub_indices)
+
+                        mbh.extend( mbh_ )
+                        mstar.extend( mstar_ )
+                        
+                    mbh = np.array(mbh)
+                    mstar = np.array(mstar)
+
+                    ids = np.digitize(mstar, bins)
+                    counts_i = [np.sum(np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]
+                    counts += counts_i / sel_mask['h_frac'][0][m]
+
+                    mbh_mean  += np.array([np.sum(mbh[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
+                    mstar_mean += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][0][m]
+
+            mbh_mean = mbh_mean / counts
+            mstar_mean = mstar_mean / counts
+
+        return  {'mbh_mean':mbh_mean, 'mstar_mean':mstar_mean}
+
+
     def bh_mf(self, sel_mask=None, nbins=100):
         '''
         Function to get the black-hole mass-function of a simulation
@@ -328,12 +397,12 @@ class split_halos():
         hist       = {d:np.zeros(nbins-1) for d in range(draws)}
         mstar_mean = {d:np.zeros(nbins-1) for d in range(draws)}
 
-        first = self.sim.fof['halo_firstsub']#[presel]
-        nsubs = self.sim.fof['halo_nsubs']#[presel]
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
 
         for m in range(len(sel_mask['sel'])):
             for d in range(draws):
-                if sel_mask['h_frac'][d][m]!=0:
+                if sel_mask['h_frac'][d][m]!=0.0:
                     mstar = []
                     for i in range(len(sel_mask['sel'][m][d])):
                         if m_30kpc is True:
@@ -341,16 +410,18 @@ class split_halos():
                             mstar_ = self.get_mstar_30kpc_vec( sub_indices )
                             mstar.extend( mstar_ )
                         else:
-                            mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]] / self.sim.Cosmology.pars['hubble'])
+                            start = first[sel_mask['sel'][m][d][i]]
+                            stop = start + nsubs[sel_mask['sel'][m][d][i]]
+                            mstar.extend(self.sim.sub['MassType'][:,4][start:stop] / self.sim.Cosmology.pars['hubble'])
                     
                     mstar = 1e10 * np.array(mstar)
 
                     ids = np.digitize(mstar, bins)
-                    counts_i = [np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))]  / sel_mask['h_frac'][d][m]
+                    counts_i = np.array([np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))])  / sel_mask['h_frac'][d][m]
 
                     counts[d] += counts_i
                     hist[d]   += np.array(counts_i)
-                    mstar_mean[d] += [np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))] / sel_mask['h_frac'][d][m]
+                    mstar_mean[d] += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][d][m]
 
         bin_width = np.log10(bins[1:])-np.log10(bins[:-1])
         norm = 1 / ( ( self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'] )**3 * bin_width )
@@ -417,56 +488,12 @@ class split_halos():
 
         return  {'smf':hist, 'bins':bins, 'mstar':mstar_mean}
 
-    def halo_gas_frac(self, sel_mask=None, draws=1, nbins=100):
-        '''
-            Function to get the fraction of gas in a selection, binned as a function of halo masses
-        '''
-
-        bins = np.logspace(12.0, 14.5, nbins)
-
-        _m500c = 1e10 * self.sim.fof['halo_m500c'] / self.sim.Cosmology.pars['hubble']
-        _r500c = self.sim.fof['halo_r500c'] / self.sim.Cosmology.pars['hubble']
-        _main_sub = self.sim.fof['halo_firstsub']
-        _mgas  = 1e10 * self.sim.sub['MassType'][:,0] / self.sim.Cosmology.pars['hubble']
-        _mtot =  1e10 * np.sum(self.sim.sub['MassType'], axis=1)[_main_sub] / self.sim.Cosmology.pars['hubble']
-
-        counts     = {d:np.zeros(nbins-1) for d in range(draws)}
-        weights    = {d:np.zeros(nbins-1) for d in range(draws)}
-        fgas       = {d:np.zeros(nbins-1) for d in range(draws)}
-        m500c_mean = {d:np.zeros(nbins-1) for d in range(draws)}
-
-        for d in range(draws):
-            for m in range(len(sel_mask['sel'])):
-                if sel_mask['h_frac'][d][m]!=0:
-                    
-                    d_sub = np.sqrt( np.sum( (self.sim.sub['pos'] - self.sim.sub['pos'][_main_sub[sel_mask['sel'][m][d]]])**2, axis=1 ) )
-                    rsel = np.where( d_sub < _r500c[sel_mask['sel'][m][d]] )[0]
-                    
-                    mgas = np.sum(_mgas[rsel])
-                    mtot = _mtot[sel_mask['sel'][m][d]]
-                    m500c = _m500c[sel_mask['sel'][m][d]]
-
-                    ids = np.digitize(m500c, bins)
-
-                    counts_i = np.array([np.sum( np.ones(len(m500c))[np.where(ids==j)]) for j in range(1,len(bins))])
-                    counts[d] += counts_i
-                    weights[d] += counts_i / sel_mask['h_frac'][d][m] 
-
-                    fgas[d] += np.array([np.sum((mgas/mtot)[np.where(ids==j)]) for j in range(1,nbins)]) / sel_mask['h_frac'][d][m]
-                    m500c_mean[d] += [np.sum(m500c[np.where(ids==j)]) for j in range(1,nbins)]
-
-        for d in range(draws):
-            fgas[d] /= weights[d]
-            m500c_mean[d] /= counts[d]
-
-        return {'f_gas':fgas, 'm500c':m500c_mean, 'counts':counts}
-
     def halo_gas_frac_v2(self, sel_mask=None, draws=1, nbins=100):
         '''
             Function to get the fraction of gas in a selection, binned as a function of halo masses
         '''
 
-        bins = np.logspace(11.0, 14.5, nbins)
+        bins = np.logspace(12., 15., nbins)
 
         _m500c = 1e10 * self.sim.fof['halo_m500c'] / self.sim.Cosmology.pars['hubble']
         _r500c = self.sim.fof['halo_r500c'] / self.sim.Cosmology.pars['hubble']
@@ -505,87 +532,122 @@ class split_halos():
         return {'f_gas':fgas, 'm500c':m500c_mean, 'counts':counts}
 
 
-    def halo_SFR(self, mhalo_edges=None, sel_mask=None, vmax_sel=False, draws=1, nbins=100):
-        '''
-        '''
+    def lite_mtng_gas_frac(self, sel_mask=None, draws=1, nbins=100, red_fac=64):
+        """
+        Compute the gas fraction as a function of M500c using a spatial tree query
+        on a diluted MTNG snapshot.
 
-        bins = np.logspace(8, 13, nbins)
+        Mirrors halo_gas_frac_v2 but does NOT rely on FoF/Subfind particle offsets,
+        since those are not consistent with a post-hoc diluted snapshot. Instead,
+        for each selected halo we query all diluted gas particles within r500c
+        using a single cKDTree built once over the full diluted gas catalogue.
 
-        presel = np.where(self.m200b>10**mhalo_edges[0,0])[0]
-        first = self.sim.fof['halo_firstsub'][presel]
-        nsubs = self.sim.fof['halo_nsubs'][presel]
-        
-        counts     = {d:np.zeros(nbins-1) for d in range(draws)}
-        weights    = {d:np.zeros(nbins-1) for d in range(draws)}
-        sSFR_mean   = {d:np.zeros(nbins-1) for d in range(draws)}
-        mstar_mean = {d:np.zeros(nbins-1) for d in range(draws)}
+        The gas masses recovered from the diluted snapshot are scaled up by
+        `red_fac` to compensate for the dilution. This assumes the dilution kept
+        ~1/red_fac of the gas particles on average, which is the case both for
+        `np.random.randint` sampling (with replacement, average rate 1/red_fac)
+        and for `ID % red_fac == 0` selection (deterministic rate 1/red_fac).
 
-        if vmax_sel is True:
-            for d in range(draws):
-                for m in range(len(sel_mask['sel'])):
-                    if sel_mask['h_frac'][m][d]!=0:
-                        for v in range(len(sel_mask['sel'][m][d])):
-                            mstar = self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][v]]:first[sel_mask['sel'][m][d][v]]+nsubs[sel_mask['sel'][m][d][v]]]
-                            sSFR = self.sim.sub['SFR'][first[sel_mask['sel'][m][d][v]]:first[sel_mask['sel'][m][d][v]]+nsubs[sel_mask['sel'][m][d][v]]]
+        :param sel_mask: dictionary with at least the keys 'sel' (list of halo
+                        index arrays per mass-bin) and 'h_frac' (per-draw
+                        selection fractions per mass-bin), as in halo_gas_frac_v2
+        :type sel_mask: dict
+        :param draws: number of independent draws over the selection
+        :type draws: int
+        :param nbins: number of M500c bin edges (so nbins-1 bins)
+        :type nbins: int
+        :param red_fac: dilution factor of the snapshot (e.g. 8 for the diluted
+                        MTNG produced by the dilution script)
+        :type red_fac: int
 
-                            mstar = 1e10 * np.array(mstar)
-                            sSFR  = 1e10 * np.array(sSFR) / mstar
+        :return: dict with keys 'f_gas', 'm500c', 'counts', each a dict over
+                draws, exactly as halo_gas_frac_v2.
+        :rtype: dict
+        """
+        from scipy.spatial import cKDTree
 
-                            ids = np.digitize(mstar, bins)
-                            counts_i = np.array([np.sum( np.ones(len(mstar))[np.where(ids==i)]) for i in range(1,len(bins))] )
-                            counts[d] += counts_i
-                            weights[d] += counts_i / sel_mask['h_frac'][m][d][v]
+        bins = np.logspace(12.0, 14.5, nbins)
+        h = self.sim.Cosmology.pars['hubble']
 
-                            sSFR_mean[d] += np.array([np.sum(sSFR[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][m][d][v]
-                            mstar_mean[d] += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))])
+        # ------------------------------------------------------------------
+        # Halo properties (same conventions as halo_gas_frac_v2)
+        # ------------------------------------------------------------------
+        _m500c = 1e10 * self.sim.fof['halo_m500c'] / h           # Msun
+        _r500c = self.sim.fof['halo_r500c'] / h                  # Mpc
+        _hpos = self.sim.fof['halo_pos'] / h                     # Mpc
 
-        else:
-            for d in range(draws):
-                for m in range(len(sel_mask['sel'])):
-                    if sel_mask['h_frac'][d][m]!=0:
+        # ------------------------------------------------------------------
+        # Build the spatial index once over the diluted gas particles.
+        # cKDTree handles periodic boundaries natively when given boxsize.
+        # All inputs to the tree must be in the same units (here: Mpc).
+        # ------------------------------------------------------------------
+        boxsize = self.sim.header['BoxSize'] / h                 # Mpc
+        gas_pos = np.mod(self.sim.gas['pos'], self.sim.header['BoxSize']) / h                        # Mpc
+        gas_mass = self.sim.gas['mass']                          # 1e10 Msun/h units
 
-                        mstar = []
-                        sSFR  = []
-                        for i in range(len(sel_mask['sel'][m][d])):
-                            mstar.extend(self.sim.sub['MassType'][:,4][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]])
-                            sSFR.extend(self.sim.sub['SFR'][first[sel_mask['sel'][m][d][i]]:first[sel_mask['sel'][m][d][i]]+nsubs[sel_mask['sel'][m][d][i]]])
+        print("Now Building the cKDTree for gas particles (this may take a while)...")
+        tree = cKDTree(gas_pos, boxsize=boxsize)
+        print("Finished")
 
-                        mstar = 1e10 * np.array(mstar)
-                        sSFR  = 1e10 * np.array(sSFR) / mstar
+        # ------------------------------------------------------------------
+        # Output containers, identical shape to halo_gas_frac_v2
+        # ------------------------------------------------------------------
+        counts = {d: np.zeros(nbins - 1) for d in range(draws)}
+        weights = {d: np.zeros(nbins - 1) for d in range(draws)}
+        fgas = {d: np.zeros(nbins - 1) for d in range(draws)}
+        m500c_mean = {d: np.zeros(nbins - 1) for d in range(draws)}
 
-                        ids = np.digitize(mstar, bins)
+        # ------------------------------------------------------------------
+        # Main loop over draws and mass-bin selections
+        # ------------------------------------------------------------------
+        for d in range(draws):
+            for m in range(len(sel_mask['sel'])):
+                if sel_mask['h_frac'][d][m] == 0:
+                    continue
 
-                        counts_i = np.array([np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))])
-                        weights[d] += counts_i / sel_mask['h_frac'][d][m] 
-                        counts[d]  += counts_i
+                ihalo = sel_mask['sel'][m][d][0]
 
-                        sSFR_mean[d] += np.array([np.sum(sSFR[np.where(ids==j)]) for j in range(1,len(bins))]) / sel_mask['h_frac'][d][m] 
-                        mstar_mean[d] += np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))])
+                center = _hpos[ihalo]
+                r500 = _r500c[ihalo]
+
+                # Particles in a sphere of r500c around the halo centre.
+                # Returns a list of indices into gas_pos / gas_mass.
+                idx = tree.query_ball_point(center, r500)
+
+                # Diluted gas mass inside r500c, rescaled to recover the
+                # full-resolution mass. Same final units as halo_gas_frac_v2:
+                # Msun (1e10 factor + /h to convert from 1e10 Msun/h).
+                mgas_500 = 1e10 * red_fac * np.sum(gas_mass[idx]) / h
+
+                m500c = _m500c[sel_mask['sel'][m][d]]
+
+                ids = np.digitize(m500c, bins)
+
+                counts_i = np.array(
+                    [np.sum(np.ones(len(m500c))[np.where(ids == j)])
+                    for j in range(1, len(bins))]
+                )
+                counts[d] += counts_i
+                weights[d] += counts_i / sel_mask['h_frac'][d][m]
+
+                fgas[d] += np.array(
+                    [np.sum((mgas_500 / m500c)[np.where(ids == j)])
+                    for j in range(1, nbins)]
+                ) / sel_mask['h_frac'][d][m]
+
+                m500c_mean[d] += [
+                    np.sum(m500c[np.where(ids == j)])
+                    for j in range(1, nbins)
+                ]
 
         for d in range(draws):
-            sSFR_mean[d] /= weights[d]
-            mstar_mean[d] /= counts[d]
+            # Avoid division-by-zero in empty bins; leave them as 0.
+            nz = weights[d] > 0
+            fgas[d][nz] /= weights[d][nz]
+            nz = counts[d] > 0
+            m500c_mean[d][nz] /= counts[d][nz]
 
-        return {'sSFR':sSFR_mean, 'mstar':mstar_mean, 'counts':counts}
-
-    def total_SFR(self, nbins=100):
-        '''
-        '''
-
-        bins = np.logspace(8, 13, nbins)
-
-        mstar = np.array(1e10 * self.sim.sub['MassType'][:,4])
-        sSFR   = np.array(1e10 * self.sim.sub['SFR']) / mstar
-
-        ids = np.digitize(mstar, bins)
-
-        counts = np.array([np.sum( np.ones(len(mstar))[np.where(ids==j)]) for j in range(1,len(bins))])
-
-        sSFR_mean = np.array([np.sum(sSFR[np.where(ids==j)]) for j in range(1,len(bins))]) / counts 
-        mstar_mean = np.array([np.sum(mstar[np.where(ids==j)]) for j in range(1,len(bins))]) / counts
-
-        return {'sSFR':sSFR_mean, 'mstar':mstar_mean, 'counts':counts}
-
+        return {'f_gas': fgas, 'm500c': m500c_mean, 'counts': counts}
 
     def get_bpo(
             self, recompute=False, IA_terms=("J2=2", "J222=", "J2-2-2-")
@@ -717,7 +779,6 @@ def cross_match(zoom, snap, name=None):
         - d: the distance between the matched halos
     '''
 
-    import numpy.ma as ma
     import scipy
 
     if name is not None:
@@ -747,22 +808,22 @@ def cross_match(zoom, snap, name=None):
     dist, ind = kdt.query(X2, k=100)
 
     # load halo properties
-    M1 = 1e10 * zoom.fof['halo_m200b'][ind]
-    M2 = 1e10 * mtng.fof['halo_m200b'][final_sel]
+    M_zoom = 1e10 * zoom.fof['halo_m200b'][ind]
+    M_mtng = 1e10 * mtng.fof['halo_m200b'][final_sel]
 
-    pos1 = np.transpose(zoom.fof['halo_pos'][ind], (2,0,1))
-    pos2 = mtng.fof['halo_pos'][final_sel].T
+    v_zoom = zoom.fof['halo_vel'][ind,:]
+    v_mtng = mtng.fof['halo_vel'][final_sel,:]
 
-    vmax_1 = zoom.sub['vmax'][zoom.fof['halo_firstsub'][ind]]
-    vmax_2 = mtng.sub['vmax'][mtng.fof['halo_firstsub'][final_sel]]
+    cos = np.sum(v_zoom * v_mtng[:,np.newaxis,:], axis=2) / ( np.linalg.norm(v_zoom, axis=2) * np.linalg.norm(v_mtng, axis=1)[:,np.newaxis] )
+    v_ratio = np.linalg.norm(v_zoom, axis=2) / np.linalg.norm(v_mtng, axis=1)[:,np.newaxis]
 
-    d = metric(M2,M1,vmax_2,vmax_1,dist,1,1,0)
+    d = metric(M_mtng, M_zoom, cos, v_ratio, dist, 1, 1, 1, 1)
 
-    xmatch = np.zeros(len(M1), dtype=int)
-    dmatch = np.zeros(len(M1))
-    metr = np.zeros(len(M1))
+    xmatch = np.zeros(len(M_zoom), dtype=int)
+    dmatch = np.zeros(len(M_zoom))
+    metr = np.zeros(len(M_zoom))
 
-    for i in range(len(M1)):
+    for i in range(len(final_sel)):
         metr[i] = d[i].min()
         xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
         dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
@@ -770,7 +831,7 @@ def cross_match(zoom, snap, name=None):
     if name is None:
         return {'ind':xmatch, 'd':dmatch}
     else:
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/vmax_cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
         return {'ind':xmatch, 'd':dmatch}
 
 def cross_match_zooms(zoom1, zoom2):
@@ -1063,15 +1124,17 @@ def read_central_xmatch(sim_name):
 
     return {'mtng_id': np.array(mtng_id), 'zoom_id': np.array(zoom_id), 'dx': np.array(dx), 'dy': np.array(dy), 'dz': np.array(dz)}
 
-def metric(m1,m2,v1,v2,dist,a,b,c):
+def metric(m1, m2, cos, v_ratio, dist, a, b, c, d):
+    d_m = np.abs((1 - m1[..., np.newaxis]/m2) / 0.2)
+    d_v = np.abs((1 - v_ratio) / 0.2)
+    d_theta = (1-cos)/0.2
 
-    #d_m = np.abs(np.log10(m1[...,np.newaxis]/m2))
-    #d_v = np.abs(v1[...,np.newaxis]-v2)
+    if np.any(m2 < 1e11):
+        penalty = 10
+    else:
+        penalty=0
 
-    d_m = np.abs( (1 - m1[...,np.newaxis]/m2)/0.2 )
-    d_v = np.abs( (1 - v1[...,np.newaxis]/v2)/0.2 )
-
-    return dist*a + d_m*b + d_v*c
+    return dist*a + d_m*b + d_v*c + d_theta*d + penalty
 
 def pars(i, mstar):
 
@@ -1144,3 +1207,189 @@ def get_mtng_bhmf(mtng, nbins=20):
     mbh_mean = mbh_mean / counts
 
     return  {'bhmf':hist, 'bins':bins, 'mbh':mbh_mean}
+
+def lite_mtng_smf_draws(self, sel_mask=None, nbins=100, draws=1, m_30kpc=False,
+                        red_fac=64):
+    """
+    Compute the galaxy stellar mass function from a diluted MTNG snapshot.
+
+    Mirrors halo_smf_draws. For m_30kpc=False the function is identical to
+    the original: it reads Subfind subhalo stellar masses from the catalogue,
+    which is independent of the snapshot dilution. For m_30kpc=True the
+    function replaces the per-subhalo aperture computation by a single
+    cKDTree query over the diluted PartType4 catalogue: stars within
+    30 physical kpc of each subhalo centre are summed, and the result is
+    rescaled by red_fac to recover the full-resolution stellar mass.
+
+    Note on noise: 30 pkpc is a small aperture. At full resolution a galaxy
+    typically has tens to hundreds of star particles within it; after
+    dilution by red_fac (with replacement, as the dilution script does) this
+    drops by the same factor and the per-galaxy mass becomes Poisson-noisy.
+    The estimator is unbiased on average but the SMF will show extra scatter
+    relative to the full-resolution version, particularly at the faint end.
+
+    :param sel_mask: dictionary with keys 'sel' and 'h_frac', as in
+                     halo_smf_draws
+    :type sel_mask: dict
+    :param nbins: number of stellar-mass bin edges (so nbins-1 bins)
+    :type nbins: int
+    :param draws: number of independent draws over the selection
+    :type draws: int
+    :param m_30kpc: if True, compute stellar masses within 30 physical kpc
+                    of each subhalo centre using particles; if False, use
+                    the Subfind catalogue MassType[:, 4] directly
+    :type m_30kpc: bool
+    :param red_fac: dilution factor of the snapshot (e.g. 8)
+    :type red_fac: int
+
+    :return: dict with keys 'smf', 'bins', 'mstar', matching halo_smf_draws
+    :rtype: dict
+    """
+
+    bins = np.logspace(9, 12.5, nbins)
+    h = self.sim.Cosmology.pars['hubble']
+
+    counts = {d: np.zeros(nbins - 1) for d in range(draws)}
+    hist = {d: np.zeros(nbins - 1) for d in range(draws)}
+    mstar_mean = {d: np.zeros(nbins - 1) for d in range(draws)}
+
+    first = self.sim.fof['halo_firstsub']
+    nsubs = self.sim.fof['halo_nsubs']
+
+    # ------------------------------------------------------------------
+    # Tree setup, only needed for the m_30kpc=True branch.
+    # Built once, reused across all subhalo queries. Working in Mpc/h
+    # (comoving) throughout to match the simulation's native units.
+    # ------------------------------------------------------------------
+    if m_30kpc:
+        boxsize = self.sim.header['BoxSize']                 # Mpc/h, comoving
+        star_pos = self.sim.stars['pos']                     # Mpc/h, comoving
+        star_mass = 1e10 * self.sim.stars['mass'] / h        # Msun
+
+        # Wrap any particles sitting at exactly boxsize (cKDTree requires
+        # 0 <= coord < boxsize strictly).
+        star_pos = np.mod(star_pos, boxsize)
+
+        tree = cKDTree(star_pos, boxsize=boxsize)
+
+        # 30 physical kpc -> comoving Mpc/h:
+        #   30 pkpc = 30e-3 pMpc = (30e-3 / a) cMpc = (30e-3 / a) * h cMpc/h
+        # where a is the scale factor at the snapshot redshift.
+        a = self.sim.header['Time']
+        aperture = 30e-3 * h / a                             # Mpc/h, comoving
+
+        sub_pos = np.mod(self.sim.sub['pos'], boxsize)       # Mpc/h, comoving
+
+    # ------------------------------------------------------------------
+    # Main loop, structure matches halo_smf_draws
+    # ------------------------------------------------------------------
+    for m in range(len(sel_mask['sel'])):
+        for d in range(draws):
+            if sel_mask['h_frac'][d][m] == 0.0:
+                continue
+
+            mstar = []
+            for i in range(len(sel_mask['sel'][m][d])):
+                ihalo = sel_mask['sel'][m][d][i]
+                start = first[ihalo]
+                stop = start + nsubs[ihalo]
+
+                if m_30kpc:
+                    # One tree query per subhalo, summed inside the aperture.
+                    # red_fac compensates for the snapshot dilution.
+                    for isub in range(start, stop):
+                        idx = tree.query_ball_point(sub_pos[isub], aperture)
+                        m_in = red_fac * np.sum(star_mass[idx])
+                        mstar.append(m_in)
+                else:
+                    mstar.extend(
+                        self.sim.sub['MassType'][:, 4][start:stop] / h
+                    )
+
+            if m_30kpc:
+                mstar = np.array(mstar)
+            else:
+                mstar = 1e10 * np.array(mstar)
+
+            ids = np.digitize(mstar, bins)
+            counts_i = np.array(
+                [np.sum(np.ones(len(mstar))[np.where(ids == j)])
+                 for j in range(1, len(bins))]
+            ) / sel_mask['h_frac'][d][m]
+
+            counts[d] += counts_i
+            hist[d] += np.array(counts_i)
+            mstar_mean[d] += np.array(
+                [np.sum(mstar[np.where(ids == j)])
+                 for j in range(1, len(bins))]
+            ) / sel_mask['h_frac'][d][m]
+
+    bin_width = np.log10(bins[1:]) - np.log10(bins[:-1])
+    norm = 1 / ((self.sim.header['BoxSize'] / h) ** 3 * bin_width)
+
+    for d in range(draws):
+        hist[d] *= norm
+        nz = counts[d] > 0
+        mstar_mean[d][nz] = mstar_mean[d][nz] / counts[d][nz]
+
+    return {'smf': hist, 'bins': bins, 'mstar': mstar_mean}
+
+def get_parameters():
+    wind_en_or      = []
+    wind_vel_or     = []
+    rho_rec_or      = []
+    sf_ts_or        = []
+    ef_kin_or       = []
+    ef_high_or      = []
+    f_re_or         = []
+
+    for i in range(31):
+        if i<30:
+            filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_{:d}.txt".format(i)
+        else:
+            filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro.txt"
+
+        with open(filename, 'r') as f:
+            for line in f.readlines():
+                if len(line.split())!=0:
+                    if line.split()[0] == 'WindEnergyIn1e51erg':
+                        wind_en_or.append(float(line.split()[1]))
+                    if line.split()[0] == 'VariableWindVelFactor':
+                        wind_vel_or.append(float(line.split()[1]))
+                    if line.split()[0] == 'WindFreeTravelDensFac':
+                        rho_rec_or.append(float(line.split()[1]))
+                    if line.split()[0] == 'MaxSfrTimescale':
+                        sf_ts_or.append(float(line.split()[1]))
+                    if line.split()[0] == 'RadioFeedbackFactor':
+                        ef_kin_or.append(float(line.split()[1]))
+                    if line.split()[0] == 'BlackHoleFeedbackFactor':
+                        ef_high_or.append(float(line.split()[1]))
+                    if line.split()[0] == 'RadioFeedbackReiorientationFactor':
+                        f_re_or.append(float(line.split()[1]))
+
+    rho_rec_or = np.log10(rho_rec_or)
+    ef_kin_or = np.log10(ef_kin_or)
+            
+    wind_en   = (np.asarray(wind_en_or) - np.mean(wind_en_or)) / np.std(wind_en_or)
+    wind_vel  = (np.asarray(wind_vel_or) - np.mean(wind_vel_or)) / np.std(wind_vel_or)
+    rho_rec   = (np.asarray(rho_rec_or) - np.mean(rho_rec_or)) / np.std(rho_rec_or)
+    sf_ts     = (np.asarray(sf_ts_or) - np.mean(sf_ts_or)) / np.std(sf_ts_or)
+    ef_kin    = (np.asarray(ef_kin_or) - np.mean(ef_kin_or)) / np.std(ef_kin_or)
+    ef_high   = (np.asarray(ef_high_or) - np.mean(ef_high_or)) / np.std(ef_high_or)
+    f_re      = (np.asarray(f_re_or) - np.mean(f_re_or)) / np.std(f_re_or)
+
+    return wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re
+
+def pars(i, mass):
+
+    wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re = get_parameters()
+
+    arr = np.vstack( ( mass, np.ones(len(mass)) * wind_en[i],\
+                        np.ones(len(mass)) * wind_vel[i],\
+                        np.ones(len(mass)) * rho_rec[i],\
+                        np.ones(len(mass)) * sf_ts[i],\
+                        np.ones(len(mass)) * ef_kin[i],\
+                        np.ones(len(mass)) * ef_high[i],\
+                        np.ones(len(mass)) * f_re[i])).T
+
+    return arr
