@@ -13,3 +13,5 @@
 /scripts/cross-validation/best_models_k10_nbins10
 /scripts/cross-validation/best_models_k10_nbins10/*
 /cross-match
+/Notebooks/validation/halo_plots
+/scripts/cross-validation/best_models_k10_nbins15
