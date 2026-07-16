@@ -9,6 +9,18 @@ import sys
 sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/src")
 import utils
 
+def mean_std_without_zeros(array):
+    ndraws, nbins = array.shape
+    mean_values = []
+    std_values = []
+
+    for i in range(nbins):
+        non_zero_values = array[:, i][array[:, i] != 0]
+        mean_values.append(np.mean(non_zero_values))
+        std_values.append(np.std(non_zero_values))
+
+    return np.array(mean_values), np.array(std_values)
+
 wind_en_or      = []
 wind_vel_or     = []
 rho_rec_or      = []
@@ -83,10 +95,10 @@ for i in range(len(name_list)):
     zoom_fgas[name_list[i]]['f_gas'][0] = zoom_fgas[name_list[i]]['f_gas'][0][mask]
     zoom_fgas[name_list[i]]['m500c'][0] = zoom_fgas[name_list[i]]['m500c'][0][mask]
 
-# Estimate the SMF simulation error
+# Estimate the fgas simulation error
 fgas_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_draws/fgas_draws100_nbins10.npy", allow_pickle=True).item()
-
-err_fgas = np.std(fgas_draws['ens_fgas'], axis=0)
+sim_fgas, err_sim_fgas = mean_std_without_zeros(fgas_draws['ens_fgas'])
+sim_m500c, _ = mean_std_without_zeros(fgas_draws['m500'])
 
 # Define the training set
 train_sel = np.arange(31)
@@ -111,7 +123,7 @@ torch.set_num_threads(8)
 ### Define the GP model
 
 # initialize likelihood and model
-likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(noise=torch.asarray(err_fgas**2, dtype=torch.float), learn_additional_noise=True)
+likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(noise=torch.asarray(err_sim_fgas**2, dtype=torch.float), learn_additional_noise=True)
 model = fgas_Model(train_x, train_y, likelihood)
 
 # this is for running the notebook in our testing framework

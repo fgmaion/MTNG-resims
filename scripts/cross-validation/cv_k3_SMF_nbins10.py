@@ -83,12 +83,12 @@ Nsims = len(name_list)
 wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re = utils.get_parameters()
 
 fid_pars = np.array([wind_en[30], wind_vel[30], rho_rec[30], sf_ts[30], ef_kin[30], ef_high[30], f_re[30]])
-Nbins_smf = 10
+Nbins_smf = 15
 
 ## Load the SMF data
 zoom_smf = {}
 for i in range(Nsims):
-    zoom_smf[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/new_smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf), allow_pickle=True)[0]
+    zoom_smf[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf), allow_pickle=True)[0]
 
 # Filter NaNs
 for i in range(Nsims):
@@ -98,7 +98,7 @@ for i in range(Nsims):
     zoom_smf[name_list[i]]['mstar'][0] = zoom_smf[name_list[i]]['mstar'][0][mask]
 
 # Estimate the SMF simulation error
-smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins10.npy", allow_pickle=True).item()
+smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins14.npy", allow_pickle=True).item()
 
 err_smf = np.std(smf_draws['ens_smf'], axis=0)
 err_log_smf = torch.asarray(err_smf / np.mean(smf_draws['ens_smf'], axis=0) / np.log(10), dtype=torch.float)

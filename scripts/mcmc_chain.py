@@ -9,6 +9,18 @@ import gpytorch
 import emcee
 import corner
 
+def mean_std_without_zeros(array):
+    ndraws, nbins = array.shape
+    mean_values = []
+    std_values = []
+
+    for i in range(nbins):
+        non_zero_values = array[:, i][array[:, i] != 0]
+        mean_values.append(np.mean(non_zero_values))
+        std_values.append(np.std(non_zero_values))
+
+    return np.array(mean_values), np.array(std_values)
+
 import sys
 sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/scripts/train")
 from GP_models import SMF_Model, fgas_Model
@@ -16,7 +28,7 @@ from GP_models import SMF_Model, fgas_Model
 ###########################################
 # Define quantities which we will fit
 
-mcmc_type = 'joint' # "smf", "fgas", "joint" or any of those with -BF in the end
+mcmc_type = 'fgas' # "smf", "fgas", "joint" or any of those with -BF in the end
 reset = True
 ###########################################
 
@@ -29,7 +41,7 @@ par_range = 'regular'  #'regular' #'extended', #BF-included
 ###########################################
 # Choose the X-ray dataset we wish to fit
 
-dataset = 'popesso' # 'popesso' or 'kugel'
+dataset = 'kugel' # 'popesso' or 'kugel'
 ###########################################
 
 print("OMP_NUM_THREADS =", os.environ.get("OMP_NUM_THREADS"))
@@ -50,6 +62,18 @@ elif dataset=='kugel':
 gsmf = np.loadtxt('/cosmos_storage/home/fgmaion/MTNG-resims/data/GAMA_SDSS_stitched_GSMF_h0p6774.csv',
                   delimiter=',', comments='#', skiprows=33,
                   usecols=(0, 1, 2))
+
+# Simulation error on fgas
+fgas_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_draws/fgas_draws100_nbins10.npy", allow_pickle=True).item()
+sim_fgas, err_sim_fgas = mean_std_without_zeros(fgas_draws['ens_fgas'])
+sim_m500c, _ = mean_std_without_zeros(fgas_draws['m500'])
+
+# Simulation error on the SMF
+smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins10.npy", allow_pickle=True).item()
+
+sim_smf, err_sim_smf = mean_std_without_zeros(smf_draws['ens_smf'])
+err_sim_log_smf = err_sim_smf / sim_smf / np.log(10)
+sim_mstar, _ = mean_std_without_zeros(smf_draws['mstar'])
 
 def model_gsmf(gsmf, b_star, b_cv):
 
@@ -106,65 +130,14 @@ ef_kin    = (np.asarray(ef_kin_or) - np.mean(ef_kin_or)) / np.std(ef_kin_or)
 ef_high   = (np.asarray(ef_high_or) - np.mean(ef_high_or)) / np.std(ef_high_or)
 f_re      = (np.asarray(f_re_or) - np.mean(f_re_or)) / np.std(f_re_or)
 
-# ---------- 1. Define the emulator-error functions of mass ----------
-
-# SMF: per-bin CV error vector lives at the n_bins mass-bin centers
-smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins10.npy", allow_pickle=True).item()
-err_smf_per_bin = (np.std(smf_draws['ens_smf'], axis=0)
-                   / np.mean(smf_draws['ens_smf'], axis=0)
-                   / np.log(10) + 0.1)            # shape (n_bins,)
-mstar_bins = smf_draws['mstar'][0]  # <-- the mass-bin centers; adjust key name
-                                       #     to whatever your dict uses
-
-def sigma_smf_of_mass(mstar):
-    # Linear interpolation; extrapolate by clipping to the endpoint values
-    return np.interp(mstar, mstar_bins, err_smf_per_bin)
-
-# fgas: linear in log10(m500c)
-fgas_GP = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_fiducial_Nbins10.npy", allow_pickle=True)[0]
-m500c_train_vals = np.log10(fgas_GP['m500c'][0])     # <-- fixed: was `fgas`, a typo
-min_x, max_x = np.min(m500c_train_vals), np.max(m500c_train_vals)
-
-def sigma_fgas_of_mass(mhalo):
-    # Linear in mhalo, clipped at the endpoints to avoid extrapolation surprises
-    return 0.018 + (0.006 - 0.018) * (mhalo - min_x) / (max_x - min_x)
-
 # ---------- 3. Build likelihoods ----------
 
 if mcmc_type in ['smf', 'fgas', 'joint']:
     model_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_smf.pth")
     model_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_fgas.pth")
 
-    # ---------- 2. Build training noise vectors of correct length ----------
-
-    # You need access to the training inputs. Either you saved them, or you can pull
-    # them from the model (ExactGP stores them as model.train_inputs[0]).
-    train_x_smf  = model_smf.train_inputs[0].cpu().numpy()    # shape (n_train_smf, 8)
-    train_x_fgas = model_fgas.train_inputs[0].cpu().numpy()   # shape (n_train_fgas, 8)
-
-    # First column is mass (mstar for SMF, log10 m500c for fgas), per your convention
-    train_mass_smf  = train_x_smf[:, 0]
-    train_mass_fgas = train_x_fgas[:, 0]
-
-    train_noise_smf  = torch.as_tensor(sigma_smf_of_mass(train_mass_smf)**2,  dtype=torch.float)
-    train_noise_fgas = torch.as_tensor(sigma_fgas_of_mass(train_mass_fgas)**2, dtype=torch.float)
-
-    likelihood_smf = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
-        noise=train_noise_smf, learn_additional_noise=False,
-    )
-    model_smf.likelihood = likelihood_smf  # attach
-
-    likelihood_fgas = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
-        noise=train_noise_fgas, learn_additional_noise=False,
-    )
-    model_fgas.likelihood = likelihood_fgas  # attach
-
-elif mcmc_type in ['smf-BF', 'fgas-BF', 'joint-BF']:
-    model_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_smf_bf.pth")
-    likelihood_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_smf_bf.pth")
-
-    model_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_fgas_bf.pth")
-    likelihood_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_fgas_bf.pth")
+    likelihood_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_smf.pth")
+    likelihood_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_fgas.pth")
 
 param_means = np.array([np.mean(wind_en_or), np.mean(wind_vel_or), np.mean(rho_rec_or), 
                         np.mean(sf_ts_or), np.mean(ef_kin_or), np.mean(ef_high_or), np.mean(f_re_or)])
@@ -229,53 +202,57 @@ def log_likelihood_joint(theta, data_dict, models_dict, likelihood_dict, w_smf, 
 
     theta_std = prepare_theta(theta)
 
-    # --- Part A: SMF Likelihood ---
-    gsmf_data = model_gsmf(gsmf, theta[7], theta[8])
+    if w_smf > 0:
+        # --- Part A: SMF Likelihood ---
+        gsmf_data = model_gsmf(gsmf, theta[7], theta[8])
 
-    mstar = gsmf_data[:, 0]
-    obs_log_phi = gsmf_data[:, 1]
-    obs_uncertainty = gsmf_data[:, 2]
+        mstar = gsmf_data[:, 0]
+        obs_log_phi = gsmf_data[:, 1]
+        obs_uncertainty = gsmf_data[:, 2]
 
-    gp_noise_smf = torch.as_tensor(sigma_smf_of_mass(mstar)**2, dtype=torch.float)
+        smf_input = np.hstack([mstar[:, None], np.repeat(theta_std[None, :7], len(mstar), axis=0)])
+        err_smf_interp = np.interp(mstar, np.log10(sim_mstar), err_sim_log_smf)
 
-    smf_input = np.hstack([mstar[:, None], np.repeat(theta_std[None, :7], len(mstar), axis=0)])
+        with torch.no_grad():
+            pred_smf = likelihood_dict['gp_smf'](
+                models_dict['gp_smf'](torch.from_numpy(smf_input).float()),
+                noise = torch.from_numpy(err_smf_interp**2).float()
+            )
+            mu_smf = pred_smf.mean.numpy()
+            cov_smf = pred_smf.covariance_matrix.numpy()
 
-    with torch.no_grad():
-        pred_smf = likelihood_dict['gp_smf'](
-            models_dict['gp_smf'](torch.from_numpy(smf_input).float()),
-            noise=gp_noise_smf,
-        )
-        mu_smf = pred_smf.mean.numpy()
-        cov_smf = pred_smf.covariance_matrix.numpy()
+        # Total covariance = GP covariance + diagonal observational noise
+        Sigma_smf = cov_smf + np.diag(obs_uncertainty**2)
 
-    # Total covariance = GP covariance + diagonal observational noise
-    Sigma_smf = cov_smf + np.diag(obs_uncertainty**2)
+        lnL_smf = _gaussian_loglik(obs_log_phi - mu_smf, Sigma_smf)
+        if not np.isfinite(lnL_smf):
+            return -np.inf
+    else:
+        lnL_smf = 0
 
-    lnL_smf = _gaussian_loglik(obs_log_phi - mu_smf, Sigma_smf)
-    if not np.isfinite(lnL_smf):
-        return -np.inf
+    if w_fgas > 0:
+        # --- Part B: Gas Fraction Likelihood ---
+        mhalo = data_dict['mhalo']
+        fgas_input = np.hstack([mhalo[:, None], np.repeat(theta_std[None, :7], len(mhalo), axis=0)])
+        err_fgas_interp = np.interp(mhalo, np.log10(sim_m500c), err_sim_fgas)
 
-    # --- Part B: Gas Fraction Likelihood ---
-    mhalo = data_dict['mhalo']
-    fgas_input = np.hstack([mhalo[:, None], np.repeat(theta_std[None, :7], len(mhalo), axis=0)])
+        with torch.no_grad():
+            pred_fgas = likelihood_dict['gp_fgas'](
+                models_dict['gp_fgas'](torch.from_numpy(fgas_input).float()),
+                noise = torch.from_numpy(err_fgas_interp**2).float()
+            )
+            mu_fgas = pred_fgas.mean.numpy()
+            cov_fgas = pred_fgas.covariance_matrix.numpy()
 
-    gp_noise_fgas = torch.as_tensor(sigma_fgas_of_mass(mhalo)**2, dtype=torch.float)
+        # Total covariance = GP covariance + diagonal observational noise on f_gas
+        # (M_halo uncertainty propagation omitted, as in your original)
+        Sigma_fgas = cov_fgas + np.diag(data_dict['fgas_err']**2)
 
-    with torch.no_grad():
-        pred_fgas = likelihood_dict['gp_fgas'](
-            models_dict['gp_fgas'](torch.from_numpy(fgas_input).float()),
-            noise=gp_noise_fgas,
-        )
-        mu_fgas = pred_fgas.mean.numpy()
-        cov_fgas = pred_fgas.covariance_matrix.numpy()
-
-    # Total covariance = GP covariance + diagonal observational noise on f_gas
-    # (M_halo uncertainty propagation omitted, as in your original)
-    Sigma_fgas = cov_fgas + np.diag(data_dict['fgas_err']**2)
-
-    lnL_fgas = _gaussian_loglik(data_dict['fgas_obs'] - mu_fgas, Sigma_fgas)
-    if not np.isfinite(lnL_fgas):
-        return -np.inf
+        lnL_fgas = _gaussian_loglik(data_dict['fgas_obs'] - mu_fgas, Sigma_fgas)
+        if not np.isfinite(lnL_fgas):
+            return -np.inf
+    else:
+        lnL_fgas = 0
 
     # --- Part C: Combined ---
     total_lnL = w_smf * lnL_smf + w_fgas * lnL_fgas + log_p(theta)
@@ -382,7 +359,7 @@ def run_MCMC(w_smf, w_fgas):
     print("Starting MCMC run with convergence monitoring...")
 
     # Initialize variables
-    max_n = 100000        # Maximum number of steps to allow
+    max_n = 200000        # Maximum number of steps to allow
     autocorr_tol = 0.01  # Tolerance for fractional change in tau (e.g., 1%)
     min_steps = 50000     # Minimum number of steps before checking tau
     index = 0

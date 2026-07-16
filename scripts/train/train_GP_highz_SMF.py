@@ -5,18 +5,6 @@ import os
 import copy
 from GP_models import SMF_Model
 
-def mean_std_without_zeros(array):
-    ndraws, nbins = array.shape
-    mean_values = []
-    std_values = []
-
-    for i in range(nbins):
-        non_zero_values = array[:, i][array[:, i] != 0]
-        mean_values.append(np.mean(non_zero_values))
-        std_values.append(np.std(non_zero_values))
-
-    return np.array(mean_values), np.array(std_values)
-
 wind_en_or      = []
 wind_vel_or     = []
 rho_rec_or      = []
@@ -24,6 +12,7 @@ sf_ts_or        = []
 ef_kin_or       = []
 ef_high_or      = []
 f_re_or         = []
+
 
 name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']# + ['bf_sim'] 
 
@@ -77,12 +66,16 @@ def pars(i, mstar):
 
     return arr
 
-# Load SMF
-Nbins_smf = 15
+Nbins_smf = 10
 
+# 0.25 0.3, 0.5, 0.7, 0.99
+z_choice = 0.99
 zoom_smf = {}
+
+zoom_base = "/cosmos_storage/home/fgmaion/MTNG-resims/results/smf_high_z"
+
 for i in range(len(name_list)):
-    zoom_smf[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf), allow_pickle=True)[0]
+    zoom_smf[name_list[i]] = np.load("{:s}/smf_{:s}_Nbins10_z{:.2f}.npy".format(zoom_base, name_list[i], z_choice), allow_pickle=True)[0]
 
 # Filter NaNs
 for i in range(len(name_list)):
@@ -92,8 +85,8 @@ for i in range(len(name_list)):
     zoom_smf[name_list[i]]['mstar'][0] = zoom_smf[name_list[i]]['mstar'][0][mask]
 
 smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins14.npy", allow_pickle=True).item()
-mean_smf, err_smf = mean_std_without_zeros(smf_draws['ens_smf'])
-err_log_smf = torch.asarray(err_smf / mean_smf / np.log(10), dtype=torch.float)
+err_smf = np.std(smf_draws['ens_smf'], axis=0)
+err_log_smf = torch.asarray(err_smf / np.mean(smf_draws['ens_smf'], axis=0) / np.log(10), dtype=torch.float)
 
 # Define the training set
 train_sel = np.arange(31)
@@ -174,13 +167,10 @@ for r in range(n_restarts):
 model.load_state_dict(best_state['model'])
 likelihood.load_state_dict(best_state['likelihood'])
 
-#model.likelihood.second_noise_covar.noise = 0.1**2
+model.likelihood.second_noise_covar.noise = 0.1**2
 
 save_path = "/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/"
 
-#torch.save({'model_state_dict':model.state_dict(),
-#            'likelihood_state_dict':likelihood.state_dict()}, save_path + "model_smf")
-
-torch.save(model, save_path+"full_model_smf.pth")
-torch.save(likelihood, save_path+"full_likelihood_smf.pth")
+torch.save(model, save_path+"full_model_smf_z{:.2f}.pth".format(z_choice))
+torch.save(likelihood, save_path+"full_likelihood_smf_z{:.2f}.pth".format(z_choice))
 

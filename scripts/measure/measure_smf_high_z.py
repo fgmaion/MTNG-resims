@@ -4,11 +4,12 @@ import numpy as np
 import sys
 sys.path.append("/cosmos_storage/home/fgmaion/MTNG-resims/src")
 import utils
+import merger_tree_tools as mgt
+
+snap_num = [237, 232, 214, 199, 179]
 
 # Some parameters for estimation
-
-Nbins_smf = 15
-Nbins_fgas = 10
+Nbins_smf = 10
 m30_kpc = True
 
 ## Load the Zooms
@@ -16,17 +17,18 @@ sigma8 = 0.8159 #CHECK ME
 ns     = 0.9667 #CHECK ME
 tau    = 0.0965 #CHECK ME
 
-#name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial'] + ['bf_sim']
-name_list = ['bestfit_run']
+name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']
 
 snap = 264
 zoom = {}
 
-loaded = []
 for i in range(len(name_list)):
     base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/"+name_list[i]+"/hydro_output/"
-    zoom[name_list[i]] = bacco.Simulation(basedir=base, halo_file="groups_{:03d}/fof_subhalo_tab_{:03d}".format(snap,snap), sim_format='TNG500', fixedPk=True, use_orphans=False,\
-                            tau=tau, ns=ns, sigma8=sigma8, dm_file="snapdir_{:03d}/snapshot_{:03d}".format(snap,snap), use_ids=True, numpart=4320)
+    zoom[name_list[i]] = bacco.Simulation(basedir=base, halo_file="groups_{:03d}/fof_subhalo_tab_{:03d}".format(snap,snap),\
+                            tree_file="groups_{0:03d}/subhalo_prog_{0:03d}".format(snap,snap),\
+                            sim_format='TNG500', fixedPk=True, use_orphans=False,\
+                            tau=tau, ns=ns, sigma8=sigma8, dm_file="snapdir_{:03d}/snapshot_{:03d}".format(snap,snap),\
+                            use_ids=False, numpart=4320)
 
 # Load the Halo Selection
 with open("/cosmos_storage/simulations/TNG_Family/MN5_resims/resims_info/hydro_halo_sel_1pmbin.txt") as f:
@@ -70,16 +72,25 @@ for i in range(len(name_list)):
     zoom_sel[name_list[i]]['sel'] = xmatch[name_list[i]]['ind'][:,np.newaxis,np.newaxis]
     zoom_sel[name_list[i]]['h_frac'] = h_frac[np.newaxis, :]
 
-# Estimate the SMF
+snap_0 = 264
 
 zoom_smf = {}
-
 for i in range(len(name_list)):
-    zoom_smf[name_list[i]] = zoom_split[name_list[i]].halo_smf_draws(sel_mask=zoom_sel[name_list[i]], nbins=Nbins_smf, draws=1, m_30kpc=m30_kpc)
-    np.save("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_{}_Nbins{:d}".format(name_list[i], Nbins_smf), [zoom_smf[name_list[i]]])
+    base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/"+name_list[i]+"/hydro_output/"
+    tree = mgt.tree(snap_0=snap_0, tree_format='zoom', name=name_list[i], sim=zoom[name_list[i]])
+    tree.read_tree_opt()
+    
+    for j in range(len(snap_num)):
 
-zoom_fgas = {}
+        zoom_smf[name_list[i]] = zoom_split[name_list[i]].halo_smf_draws(
+                sel_mask=zoom_sel[name_list[i]],
+                nbins=Nbins_smf,
+                draws=1,
+                m_30kpc=True,
+                depth=264-snap_num[j],
+                tree=tree,
+                name=name_list[i])
 
-for i in range(len(name_list)):
-    zoom_fgas[name_list[i]] = zoom_split[name_list[i]].halo_gas_frac_v2(sel_mask=zoom_sel[name_list[i]], nbins=Nbins_fgas, draws=1)
-    np.save("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_{}_Nbins{:d}".format(name_list[i], Nbins_fgas), [zoom_fgas[name_list[i]]])
+        z = utils.redshift_from_snap(snap_num[j], base)
+
+        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf_high_z/smf_{}_Nbins{:d}_z{:.2f}".format(name_list[i], Nbins_smf, z), [zoom_smf[name_list[i]]])

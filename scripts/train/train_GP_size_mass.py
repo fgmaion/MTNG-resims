@@ -109,8 +109,8 @@ model = SMF_Model(train_x, train_y, likelihood)
 smoke_test = ('CI' in os.environ)
 #training_iter = 2 if smoke_test else 200
 
-n_restarts = 30
-steps_per_restart = 30
+n_restarts = 10
+steps_per_restart = 100
 
 best_state = None
 best_loss = float('inf')

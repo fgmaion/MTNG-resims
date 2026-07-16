@@ -64,7 +64,7 @@ ens_smf = np.zeros((draws, nbins-1))
 ens_mstar = np.zeros((draws, nbins-1))
 weights = np.ones((draws, nbins-1))
 
-temp = hydro_split.halo_smf_draws(sel_mask=ens_sel, nbins=nbins, draws=draws, m_30kpc=False)
+temp = hydro_split.lite_mtng_smf_draws(sel_mask=ens_sel, nbins=nbins, draws=draws, m_30kpc=True)
 
 for i in range(draws):
     ens_smf[i] = temp['smf'][i]

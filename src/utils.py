@@ -674,7 +674,7 @@ class split_halos():
         """
         from scipy.spatial import cKDTree
 
-        bins = np.logspace(12.0, 14.5, nbins)
+        bins = np.logspace(12., 15., nbins)
         h = self.sim.Cosmology.pars['hubble']
 
         # ------------------------------------------------------------------
@@ -756,6 +756,180 @@ class split_halos():
             m500c_mean[d][nz] /= counts[d][nz]
 
         return {'f_gas': fgas, 'm500c': m500c_mean, 'counts': counts}
+
+
+    def lite_mtng_smf_draws(self, sel_mask=None, nbins=100, draws=1, m_30kpc=False,
+                            red_fac=64):
+        """
+        Compute the galaxy stellar mass function from a diluted MTNG snapshot.
+
+        Mirrors halo_smf_draws. For m_30kpc=False the function is identical to
+        the original: it reads Subfind subhalo stellar masses from the catalogue,
+        which is independent of the snapshot dilution. For m_30kpc=True the
+        function replaces the per-subhalo aperture computation by a single
+        cKDTree query over the diluted PartType4 catalogue: stars within
+        30 physical kpc of each subhalo centre are summed, and the result is
+        rescaled by red_fac to recover the full-resolution stellar mass.
+
+        Note on noise: 30 pkpc is a small aperture. At full resolution a galaxy
+        typically has tens to hundreds of star particles within it; after
+        dilution by red_fac (with replacement, as the dilution script does) this
+        drops by the same factor and the per-galaxy mass becomes Poisson-noisy.
+        The estimator is unbiased on average but the SMF will show extra scatter
+        relative to the full-resolution version, particularly at the faint end.
+
+        :param sel_mask: dictionary with keys 'sel' and 'h_frac', as in
+                        halo_smf_draws
+        :type sel_mask: dict
+        :param nbins: number of stellar-mass bin edges (so nbins-1 bins)
+        :type nbins: int
+        :param draws: number of independent draws over the selection
+        :type draws: int
+        :param m_30kpc: if True, compute stellar masses within 30 physical kpc
+                        of each subhalo centre using particles; if False, use
+                        the Subfind catalogue MassType[:, 4] directly
+        :type m_30kpc: bool
+        :param red_fac: dilution factor of the snapshot (e.g. 8)
+        :type red_fac: int
+
+        :return: dict with keys 'smf', 'bins', 'mstar', matching halo_smf_draws
+        :rtype: dict
+        """
+
+        from scipy.spatial import cKDTree
+
+        bins = np.logspace(9, 12.5, nbins)
+        h = self.sim.Cosmology.pars['hubble']
+
+        counts = {d: np.zeros(nbins - 1) for d in range(draws)}
+        hist = {d: np.zeros(nbins - 1) for d in range(draws)}
+        mstar_mean = {d: np.zeros(nbins - 1) for d in range(draws)}
+
+        first = self.sim.fof['halo_firstsub']
+        nsubs = self.sim.fof['halo_nsubs']
+
+        # ------------------------------------------------------------------
+        # Tree setup, only needed for the m_30kpc=True branch.
+        # Built once, reused across all subhalo queries. Working in Mpc/h
+        # (comoving) throughout to match the simulation's native units.
+        # ------------------------------------------------------------------
+        if m_30kpc:
+            boxsize = self.sim.header['BoxSize']                 # Mpc/h, comoving
+            star_pos = self.sim.stars['pos']                     # Mpc/h, comoving
+            star_mass = 1e10 * self.sim.stars['mass'] / h        # Msun
+
+            # Wrap any particles sitting at exactly boxsize (cKDTree requires
+            # 0 <= coord < boxsize strictly).
+            star_pos = np.mod(star_pos, boxsize)
+
+            tree = cKDTree(star_pos, boxsize=boxsize)
+
+            # 30 physical kpc -> comoving Mpc/h:
+            #   30 pkpc = 30e-3 pMpc = (30e-3 / a) cMpc = (30e-3 / a) * h cMpc/h
+            # where a is the scale factor at the snapshot redshift.
+            a = self.sim.header['Time']
+            aperture = 30e-3 * h / a                             # Mpc/h, comoving
+
+            sub_pos = np.mod(self.sim.sub['pos'], boxsize)       # Mpc/h, comoving
+
+        # ------------------------------------------------------------------
+        # Main loop, structure matches halo_smf_draws
+        # ------------------------------------------------------------------
+        for m in range(len(sel_mask['sel'])):
+            for d in range(draws):
+                if sel_mask['h_frac'][d][m] == 0.0:
+                    continue
+
+                mstar = []
+                for i in range(len(sel_mask['sel'][m][d])):
+                    ihalo = sel_mask['sel'][m][d][i]
+                    start = first[ihalo]
+                    stop = start + nsubs[ihalo]
+
+                    if m_30kpc:
+                        # One tree query per subhalo, summed inside the aperture.
+                        # red_fac compensates for the snapshot dilution.
+                        for isub in range(start, stop):
+                            idx = tree.query_ball_point(sub_pos[isub], aperture)
+                            m_in = red_fac * np.sum(star_mass[idx])
+                            mstar.append(m_in)
+                    else:
+                        mstar.extend(
+                            self.sim.sub['MassType'][:, 4][start:stop] / h
+                        )
+
+                if m_30kpc:
+                    mstar = np.array(mstar)
+                else:
+                    mstar = 1e10 * np.array(mstar)
+
+                ids = np.digitize(mstar, bins)
+                counts_i = np.array(
+                    [np.sum(np.ones(len(mstar))[np.where(ids == j)])
+                    for j in range(1, len(bins))]
+                ) / sel_mask['h_frac'][d][m]
+
+                counts[d] += counts_i
+                hist[d] += np.array(counts_i)
+                mstar_mean[d] += np.array(
+                    [np.sum(mstar[np.where(ids == j)])
+                    for j in range(1, len(bins))]
+                ) / sel_mask['h_frac'][d][m]
+
+        bin_width = np.log10(bins[1:]) - np.log10(bins[:-1])
+        norm = 1 / ((self.sim.header['BoxSize'] / h) ** 3 * bin_width)
+
+        for d in range(draws):
+            hist[d] *= norm
+            nz = counts[d] > 0
+            mstar_mean[d][nz] = mstar_mean[d][nz] / counts[d][nz]
+
+        return {'smf': hist, 'bins': bins, 'mstar': mstar_mean}
+
+    def total_smf_30kpc(self, nbins=100, red_fac=64):
+        """
+        Full-box galaxy SMF from a diluted MTNG snapshot, using stellar mass
+        within 30 physical kpc of each subhalo centre.
+        """
+
+        from scipy.spatial import cKDTree
+
+        bins = np.logspace(9, 12.5, nbins)
+        h = self.sim.Cosmology.pars['hubble']
+        boxsize = self.sim.header['BoxSize']        # Mpc/h, comoving
+        a = self.sim.header['Time']
+
+        # Star particles (diluted snapshot), in Mpc/h comoving and Msun
+        star_pos = np.mod(self.sim.stars['pos'], boxsize)
+        star_mass = 1e10 * self.sim.stars['mass'] / h
+
+        tree = cKDTree(star_pos, boxsize=boxsize)
+
+        # 30 pkpc -> cMpc/h
+        aperture = 30e-3 * h / a
+
+        # Same halo-mass selection as total_smf, applied at the subhalo level
+        sel = np.log10(
+            1e10 * self.sim.fof['halo_m200b'][self.sim.sub['parent_halo']['index']]
+        ) > 9
+        sub_pos = np.mod(self.sim.sub['pos'][sel], boxsize)
+
+        # Aperture mass per selected subhalo
+        idx_lists = tree.query_ball_point(sub_pos, aperture)
+        mstar = np.array([red_fac * np.sum(star_mass[idx]) for idx in idx_lists])
+
+        ids = np.digitize(mstar, bins)
+        hist = np.array([np.sum(ids == i) for i in range(1, len(bins))])
+        mstar_sum = np.array([np.sum(mstar[ids == i]) for i in range(1, len(bins))])
+
+        bin_width = np.log10(bins[1:]) - np.log10(bins[:-1])
+        norm = 1 / ((boxsize / h) ** 3 * bin_width)
+
+        mstar_mean = np.zeros_like(mstar_sum, dtype=float)
+        nz = hist > 0
+        mstar_mean[nz] = mstar_sum[nz] / hist[nz]
+
+        return {'smf': norm * hist, 'bins': bins, 'mstar': mstar_mean}
 
     def get_bpo(
             self, recompute=False, IA_terms=("J2=2", "J222=", "J2-2-2-")
@@ -1315,132 +1489,6 @@ def get_mtng_bhmf(mtng, nbins=20):
     mbh_mean = mbh_mean / counts
 
     return  {'bhmf':hist, 'bins':bins, 'mbh':mbh_mean}
-
-def lite_mtng_smf_draws(self, sel_mask=None, nbins=100, draws=1, m_30kpc=False,
-                        red_fac=64):
-    """
-    Compute the galaxy stellar mass function from a diluted MTNG snapshot.
-
-    Mirrors halo_smf_draws. For m_30kpc=False the function is identical to
-    the original: it reads Subfind subhalo stellar masses from the catalogue,
-    which is independent of the snapshot dilution. For m_30kpc=True the
-    function replaces the per-subhalo aperture computation by a single
-    cKDTree query over the diluted PartType4 catalogue: stars within
-    30 physical kpc of each subhalo centre are summed, and the result is
-    rescaled by red_fac to recover the full-resolution stellar mass.
-
-    Note on noise: 30 pkpc is a small aperture. At full resolution a galaxy
-    typically has tens to hundreds of star particles within it; after
-    dilution by red_fac (with replacement, as the dilution script does) this
-    drops by the same factor and the per-galaxy mass becomes Poisson-noisy.
-    The estimator is unbiased on average but the SMF will show extra scatter
-    relative to the full-resolution version, particularly at the faint end.
-
-    :param sel_mask: dictionary with keys 'sel' and 'h_frac', as in
-                     halo_smf_draws
-    :type sel_mask: dict
-    :param nbins: number of stellar-mass bin edges (so nbins-1 bins)
-    :type nbins: int
-    :param draws: number of independent draws over the selection
-    :type draws: int
-    :param m_30kpc: if True, compute stellar masses within 30 physical kpc
-                    of each subhalo centre using particles; if False, use
-                    the Subfind catalogue MassType[:, 4] directly
-    :type m_30kpc: bool
-    :param red_fac: dilution factor of the snapshot (e.g. 8)
-    :type red_fac: int
-
-    :return: dict with keys 'smf', 'bins', 'mstar', matching halo_smf_draws
-    :rtype: dict
-    """
-
-    bins = np.logspace(9, 12.5, nbins)
-    h = self.sim.Cosmology.pars['hubble']
-
-    counts = {d: np.zeros(nbins - 1) for d in range(draws)}
-    hist = {d: np.zeros(nbins - 1) for d in range(draws)}
-    mstar_mean = {d: np.zeros(nbins - 1) for d in range(draws)}
-
-    first = self.sim.fof['halo_firstsub']
-    nsubs = self.sim.fof['halo_nsubs']
-
-    # ------------------------------------------------------------------
-    # Tree setup, only needed for the m_30kpc=True branch.
-    # Built once, reused across all subhalo queries. Working in Mpc/h
-    # (comoving) throughout to match the simulation's native units.
-    # ------------------------------------------------------------------
-    if m_30kpc:
-        boxsize = self.sim.header['BoxSize']                 # Mpc/h, comoving
-        star_pos = self.sim.stars['pos']                     # Mpc/h, comoving
-        star_mass = 1e10 * self.sim.stars['mass'] / h        # Msun
-
-        # Wrap any particles sitting at exactly boxsize (cKDTree requires
-        # 0 <= coord < boxsize strictly).
-        star_pos = np.mod(star_pos, boxsize)
-
-        tree = cKDTree(star_pos, boxsize=boxsize)
-
-        # 30 physical kpc -> comoving Mpc/h:
-        #   30 pkpc = 30e-3 pMpc = (30e-3 / a) cMpc = (30e-3 / a) * h cMpc/h
-        # where a is the scale factor at the snapshot redshift.
-        a = self.sim.header['Time']
-        aperture = 30e-3 * h / a                             # Mpc/h, comoving
-
-        sub_pos = np.mod(self.sim.sub['pos'], boxsize)       # Mpc/h, comoving
-
-    # ------------------------------------------------------------------
-    # Main loop, structure matches halo_smf_draws
-    # ------------------------------------------------------------------
-    for m in range(len(sel_mask['sel'])):
-        for d in range(draws):
-            if sel_mask['h_frac'][d][m] == 0.0:
-                continue
-
-            mstar = []
-            for i in range(len(sel_mask['sel'][m][d])):
-                ihalo = sel_mask['sel'][m][d][i]
-                start = first[ihalo]
-                stop = start + nsubs[ihalo]
-
-                if m_30kpc:
-                    # One tree query per subhalo, summed inside the aperture.
-                    # red_fac compensates for the snapshot dilution.
-                    for isub in range(start, stop):
-                        idx = tree.query_ball_point(sub_pos[isub], aperture)
-                        m_in = red_fac * np.sum(star_mass[idx])
-                        mstar.append(m_in)
-                else:
-                    mstar.extend(
-                        self.sim.sub['MassType'][:, 4][start:stop] / h
-                    )
-
-            if m_30kpc:
-                mstar = np.array(mstar)
-            else:
-                mstar = 1e10 * np.array(mstar)
-
-            ids = np.digitize(mstar, bins)
-            counts_i = np.array(
-                [np.sum(np.ones(len(mstar))[np.where(ids == j)])
-                 for j in range(1, len(bins))]
-            ) / sel_mask['h_frac'][d][m]
-
-            counts[d] += counts_i
-            hist[d] += np.array(counts_i)
-            mstar_mean[d] += np.array(
-                [np.sum(mstar[np.where(ids == j)])
-                 for j in range(1, len(bins))]
-            ) / sel_mask['h_frac'][d][m]
-
-    bin_width = np.log10(bins[1:]) - np.log10(bins[:-1])
-    norm = 1 / ((self.sim.header['BoxSize'] / h) ** 3 * bin_width)
-
-    for d in range(draws):
-        hist[d] *= norm
-        nz = counts[d] > 0
-        mstar_mean[d][nz] = mstar_mean[d][nz] / counts[d][nz]
-
-    return {'smf': hist, 'bins': bins, 'mstar': mstar_mean}
 
 def get_parameters():
     wind_en_or      = []
