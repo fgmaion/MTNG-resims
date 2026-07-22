@@ -1034,13 +1034,6 @@ class split_halos():
 
         return  {'f_gas':f_gas, 'm500':m500c_mean}
 
-# def metric(m1,m2,v1,v2,eul_dist,fbad,a,b,c,d):
-
-#     d_m = np.abs( (1 - m1[...,np.newaxis]/m2)/0.2 )
-#     d_v = np.abs( (1 - v1[...,np.newaxis]/v2)/0.2 )
-
-#     return a*eul_dist + d_m*b + d_v*c + (fbad/0.01)*d
-
 def cross_match(zoom, snap, name=None):
     '''
     Cross-match two catalogs of halos based on their position and properties.
@@ -1114,6 +1107,88 @@ def cross_match(zoom, snap, name=None):
         return {'ind':xmatch, 'd':dmatch}
     else:
         np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        return {'ind':xmatch, 'd':dmatch}
+
+
+def large_halo_cross_match(zoom, snap, name=None):
+    '''
+    Cross-match large halos in the multi-zoom resimulations with their counterparts in MTNG.
+    Parameters
+    ----------
+    zoom : bacco.Simulation
+        The simulation to match with MTNG
+    snap : int
+        The snapshot number
+    name : str, optional
+        The name of the output dictionary, by default None
+        
+    Returns
+    -------
+    dict
+        A dictionary with the following keys:
+        - ind: the index of the matched halo in the zoom simulation
+        - d: the distance between the matched halos
+    '''
+
+    import scipy
+
+    if name is not None:
+        try:
+            load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/large_halo_cross_match_{}.npy".format(name), allow_pickle=True)[0]
+            return load_match
+        except:
+            pass
+
+    # Load MTNG
+    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
+    mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
+    mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
+
+    # Load halo selection
+    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+        final_sel = []
+        for line in f.readlines():
+            final_sel.append(int(line.split()[0]))
+    final_sel = np.array(final_sel)
+
+    # Get halo masses in the MTNG
+    M_mtng = 1e10 * mtng.fof['halo_m200b'][final_sel]
+    subsel = M_mtng > 1e13
+
+    final_sel = final_sel[subsel]
+
+    # position matching
+    X1 = zoom.fof['halo_pos']
+    X2 = mtng.fof['halo_pos'][final_sel]
+
+    kdt = scipy.spatial.KDTree(X1, boxsize=mtng.header['BoxSize'])
+    dist, ind = kdt.query(X2, k=100)
+
+    # load halo properties
+    M_mtng = 1e10 * mtng.fof['halo_m200b'][final_sel]
+    M_zoom = 1e10 * zoom.fof['halo_m200b'][ind]
+
+    v_zoom = zoom.fof['halo_vel'][ind,:]
+    v_mtng = mtng.fof['halo_vel'][final_sel,:]
+
+    cos = np.sum(v_zoom * v_mtng[:,np.newaxis,:], axis=2) / ( np.linalg.norm(v_zoom, axis=2) * np.linalg.norm(v_mtng, axis=1)[:,np.newaxis] )
+    v_ratio = np.linalg.norm(v_zoom, axis=2) / np.linalg.norm(v_mtng, axis=1)[:,np.newaxis]
+
+    d = metric(M_mtng, M_zoom, cos, v_ratio, dist, 1, 1, 1, 1)
+
+    xmatch = np.zeros(len(M_zoom), dtype=int)
+    dmatch = np.zeros(len(M_zoom))
+    metr = np.zeros(len(M_zoom))
+
+    for i in range(len(final_sel)):
+        metr[i] = d[i].min()
+        xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
+        dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
+
+    if name is None:
+        return {'ind':xmatch, 'd':dmatch}
+    else:
+        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/large_halo_cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
         return {'ind':xmatch, 'd':dmatch}
 
 def cross_match_zooms(zoom1, zoom2):
