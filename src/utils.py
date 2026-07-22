@@ -540,6 +540,70 @@ class split_halos():
 
         return {'smf': hist, 'bins': bins, 'mstar': mstar_mean}
 
+    def hsmf(self, sel_mask=None, nbins=10):
+        """
+        HMF of a selection
+
+        Parameters
+        ----------
+        sel_mask : dict
+
+        nbins : int
+
+        draws : int
+
+        name : str
+            Name of the zoom, used to build paths.
+        """
+
+        bins = np.logspace(9, 12.5, nbins)
+        counts     = {d: np.zeros(nbins-1) for d in range(draws)}
+        hist       = {d: np.zeros(nbins-1) for d in range(draws)}
+        mhalo_mean = {d: np.zeros(nbins-1) for d in range(draws)}
+
+        for m in range(len(sel_mask['sel'])):
+            for d in range(draws):
+                if sel_mask['h_frac'][d][m] == 0.0:
+                    continue
+
+                mhalo = []
+                for i in range(len(sel_mask['sel'][m][d])):
+                    ihalo = sel_mask['sel'][m][d][i]
+
+                    start = first[ihalo]
+                    stop = start + nsubs[ihalo]
+                    mhalo.extend(
+                        self.sim.fof['halo_m200b'][ihalo]
+                    )
+
+                mhalo = 1e10 * np.array(mhalo)
+
+                if len(mhalo) == 0:
+                    continue
+
+                ids = np.digitize(mhalo, bins)
+                counts_i = np.array(
+                    [np.sum(np.ones(len(mhalo))[np.where(ids == j)]) for j in range(1, len(bins))]
+                ) / sel_mask['h_frac'][d][m]
+
+                counts[d] += counts_i
+                hist[d]   += counts_i
+                mhalo_mean[d] += np.array(
+                    [np.sum(mhalo[np.where(ids == j)]) for j in range(1, len(bins))]
+                ) / sel_mask['h_frac'][d][m]
+
+        bin_width = np.log10(bins[1:]) - np.log10(bins[:-1])
+        norm = 1 / ((self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'])**3 * bin_width)
+
+        for d in range(draws):
+            hist[d] *= norm
+            nz = counts[d] > 0
+            hist[d] = hist[d][nz]
+            mhalo_mean[d] = mhalo_mean[d][nz] / counts[d][nz]
+
+        return {'hmf': hist, 'bins': bins, 'mhalo': mstar_mean}
+
+
     def halo_smf(self, Nhalos, h_frac, tree=None, nbins=100, snap=264):
         '''
         Function to get the stellar mass function of a selection, binned as a function of halo masses
