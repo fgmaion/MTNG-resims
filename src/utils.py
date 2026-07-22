@@ -540,7 +540,7 @@ class split_halos():
 
         return {'smf': hist, 'bins': bins, 'mstar': mstar_mean}
 
-    def hsmf(self, sel_mask=None, nbins=10):
+    def hmf(self, sel_mask=None, nbins=10):
         """
         HMF of a selection
 
