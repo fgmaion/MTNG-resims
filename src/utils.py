@@ -1,11 +1,31 @@
 import numpy as np
 import bacco
 import h5py
+import os
+import loading
 
 class split_halos():
 
-    def __init__(self, sim):
+    def __init__(self, sim, mtng_base=None, zoom_base=None):
         self.sim = sim
+        if mtng_base is None:
+            self.mtng_base = mtng_base+""
+            try:
+                os.path.isdir(self.mtng_base)
+            except:
+                raise FileNotFoundError(f"No such file or directory: {self.mtng_base}")
+        else:
+            self.mtng_base = mtng_base
+
+        if zoom_base is None:
+            self.zoom_base = zoom_base+""
+            try:
+                os.path.isdir(self.zoom_base)
+            except:
+                raise FileNotFoundError(f"No such file or directory: {self.zoom_base}")
+        else:
+            self.zoom_base = zoom_base
+
 
     def halo_sel_setup(self,):
         '''
@@ -85,7 +105,7 @@ class split_halos():
 
     def _load_sim_at_snap(self, snap, name='fiducial'):
         """Load a bacco.Simulation at an arbitrary snapshot."""
-        base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/{}/hydro_output/".format(name)
+        base = self.zoom_base+"/{}/hydro_output/".format(name)
 
         return bacco.Simulation(
             basedir=base,
@@ -458,7 +478,7 @@ class split_halos():
         nsubs = self.sim.fof['halo_nsubs']
 
         snap = 264 - depth
-        sim_base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/{}/hydro_output/".format(name)
+        sim_base = self.zoom_base+"/{}/hydro_output/".format(name)
         z = redshift_from_snap(snap, sim_base)
 
         # High-z setup, only when needed
@@ -556,50 +576,48 @@ class split_halos():
             Name of the zoom, used to build paths.
         """
 
-        bins = np.logspace(9, 12.5, nbins)
-        counts     = {d: np.zeros(nbins-1) for d in range(draws)}
-        hist       = {d: np.zeros(nbins-1) for d in range(draws)}
-        mhalo_mean = {d: np.zeros(nbins-1) for d in range(draws)}
+        bins = np.logspace(9, 15, nbins)
+        counts     = np.zeros(nbins-1)
+        hist       = np.zeros(nbins-1)
+        mhalo_mean = np.zeros(nbins-1)
 
         for m in range(len(sel_mask['sel'])):
-            for d in range(draws):
-                if sel_mask['h_frac'][d][m] == 0.0:
-                    continue
+            if sel_mask['h_frac'][d][m] == 0.0:
+                   continue
 
-                mhalo = []
-                for i in range(len(sel_mask['sel'][m][d])):
-                    ihalo = sel_mask['sel'][m][d][i]
+            mhalo = []
+            for i in range(len(sel_mask['sel'][m][d])):
+                ihalo = sel_mask['sel'][m][d][i]
 
-                    start = first[ihalo]
-                    stop = start + nsubs[ihalo]
-                    mhalo.extend(
-                        self.sim.fof['halo_m200b'][ihalo]
-                    )
+                start = first[ihalo]
+                stop = start + nsubs[ihalo]
+                mhalo.extend(
+                    self.sim.fof['halo_m200b'][ihalo]
+                )
 
-                mhalo = 1e10 * np.array(mhalo)
+            mhalo = 1e10 * np.array(mhalo)
 
-                if len(mhalo) == 0:
-                    continue
+            if len(mhalo) == 0:
+                continue
 
-                ids = np.digitize(mhalo, bins)
-                counts_i = np.array(
-                    [np.sum(np.ones(len(mhalo))[np.where(ids == j)]) for j in range(1, len(bins))]
-                ) / sel_mask['h_frac'][d][m]
+            ids = np.digitize(mhalo, bins)
+            counts_i = np.array(
+                [np.sum(np.ones(len(mhalo))[np.where(ids == j)]) for j in range(1, len(bins))]
+            ) / sel_mask['h_frac'][d][m]
 
-                counts[d] += counts_i
-                hist[d]   += counts_i
-                mhalo_mean[d] += np.array(
-                    [np.sum(mhalo[np.where(ids == j)]) for j in range(1, len(bins))]
-                ) / sel_mask['h_frac'][d][m]
+            counts[d] += counts_i
+            hist[d]   += counts_i
+            mhalo_mean[d] += np.array(
+                [np.sum(mhalo[np.where(ids == j)]) for j in range(1, len(bins))]
+            ) / sel_mask['h_frac'][d][m]
 
         bin_width = np.log10(bins[1:]) - np.log10(bins[:-1])
         norm = 1 / ((self.sim.header['BoxSize'] / self.sim.Cosmology.pars['hubble'])**3 * bin_width)
 
-        for d in range(draws):
-            hist[d] *= norm
-            nz = counts[d] > 0
-            hist[d] = hist[d][nz]
-            mhalo_mean[d] = mhalo_mean[d][nz] / counts[d][nz]
+        hist[d] *= norm
+        nz = counts[d] > 0
+        hist[d] = hist[d][nz]
+        mhalo_mean[d] = mhalo_mean[d][nz] / counts[d][nz]
 
         return {'hmf': hist, 'bins': bins, 'mhalo': mstar_mean}
 
@@ -1098,7 +1116,7 @@ class split_halos():
 
         return  {'f_gas':f_gas, 'm500':m500c_mean}
 
-def cross_match(zoom, snap, name=None):
+def cross_match(zoom, snap, name=None, mtng_base=None, resims_base=None):
     '''
     Cross-match two catalogs of halos based on their position and properties.
     Parameters
@@ -1122,18 +1140,31 @@ def cross_match(zoom, snap, name=None):
 
     if name is not None:
         try:
-            load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
+            if resims_base is None:
+                load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
+            else:
+                load_match = np.load(resims_base + "/halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
+
             return load_match
         except:
             pass
 
     # Load MTNG
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
+    print("Loading the MTNG Simulation")
+    if mtng_base is None:
+        mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
+    else:
+        mtng = bacco.utils.load_MTNG(adr=mtng_base, snap=snap)
     mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
     mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
+    print("Finished loading the MTNG Simulation")
 
     # Load halo selection
-    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+    if resims_base is None:
+        filename = "/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt"
+    else:
+        filename = resims_base + "/halo_selection/hydro_halo_sel_1pmbin.txt"
+    with open(filename) as f:
         final_sel = []
         for line in f.readlines():
             final_sel.append(int(line.split()[0]))
@@ -1170,7 +1201,10 @@ def cross_match(zoom, snap, name=None):
     if name is None:
         return {'ind':xmatch, 'd':dmatch}
     else:
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        if resims_base is None:
+            np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        else:
+            np.save(resims_base + "/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
         return {'ind':xmatch, 'd':dmatch}
 
 
@@ -1204,7 +1238,7 @@ def large_halo_cross_match(zoom, snap, name=None):
             pass
 
     # Load MTNG
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
+    mtng = bacco.utils.load_MTNG(adr=self.mtng_base+"/", snap=snap)
     mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
     mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
 
@@ -1572,7 +1606,7 @@ def pars(i, mstar):
 def get_zoom_smf(zoom, snap=264, Nbins=50):
 
     # BE CAREFUL. Right now this works for snap=264, but I am not sure if it would work for other redshifts
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=264)
+    mtng = bacco.utils.load_MTNG(adr=self.mtng_base+"/", snap=264)
     mtng.fof['halo_pos'][:,0] = ( mtng.fof['halo_pos'][:,0] - 125 ) % 500
     
     xmatch = cross_match(zoom, snap=264)
@@ -1630,50 +1664,18 @@ def get_mtng_bhmf(mtng, nbins=20):
     return  {'bhmf':hist, 'bins':bins, 'mbh':mbh_mean}
 
 def get_parameters():
-    wind_en_or      = []
-    wind_vel_or     = []
-    rho_rec_or      = []
-    sf_ts_or        = []
-    ef_kin_or       = []
-    ef_high_or      = []
-    f_re_or         = []
+    """Deprecated -- use loading.get_lh_design() instead.
 
-    for i in range(31):
-        if i<30:
-            filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_{:d}.txt".format(i)
-        else:
-            filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro.txt"
-
-        with open(filename, 'r') as f:
-            for line in f.readlines():
-                if len(line.split())!=0:
-                    if line.split()[0] == 'WindEnergyIn1e51erg':
-                        wind_en_or.append(float(line.split()[1]))
-                    if line.split()[0] == 'VariableWindVelFactor':
-                        wind_vel_or.append(float(line.split()[1]))
-                    if line.split()[0] == 'WindFreeTravelDensFac':
-                        rho_rec_or.append(float(line.split()[1]))
-                    if line.split()[0] == 'MaxSfrTimescale':
-                        sf_ts_or.append(float(line.split()[1]))
-                    if line.split()[0] == 'RadioFeedbackFactor':
-                        ef_kin_or.append(float(line.split()[1]))
-                    if line.split()[0] == 'BlackHoleFeedbackFactor':
-                        ef_high_or.append(float(line.split()[1]))
-                    if line.split()[0] == 'RadioFeedbackReiorientationFactor':
-                        f_re_or.append(float(line.split()[1]))
-
-    rho_rec_or = np.log10(rho_rec_or)
-    ef_kin_or = np.log10(ef_kin_or)
-            
-    wind_en   = (np.asarray(wind_en_or) - np.mean(wind_en_or)) / np.std(wind_en_or)
-    wind_vel  = (np.asarray(wind_vel_or) - np.mean(wind_vel_or)) / np.std(wind_vel_or)
-    rho_rec   = (np.asarray(rho_rec_or) - np.mean(rho_rec_or)) / np.std(rho_rec_or)
-    sf_ts     = (np.asarray(sf_ts_or) - np.mean(sf_ts_or)) / np.std(sf_ts_or)
-    ef_kin    = (np.asarray(ef_kin_or) - np.mean(ef_kin_or)) / np.std(ef_kin_or)
-    ef_high   = (np.asarray(ef_high_or) - np.mean(ef_high_or)) / np.std(ef_high_or)
-    f_re      = (np.asarray(f_re_or) - np.mean(f_re_or)) / np.std(f_re_or)
-
-    return wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re
+    Returns the seven standardized subgrid-parameter arrays of the legacy
+    31-run design (LH_0 ... LH_29, fiducial), in the column order
+    (wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re).
+    """
+    import warnings
+    warnings.warn('utils.get_parameters is deprecated; use '
+                  'loading.get_lh_design() instead',
+                  DeprecationWarning, stacklevel=2)
+    design = loading.get_lh_design()['design']
+    return tuple(design[:, j] for j in range(design.shape[1]))
 
 def pars(i, mass):
 
