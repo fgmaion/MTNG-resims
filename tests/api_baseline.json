@@ -1,0 +1,776 @@
+{
+ "loading.py": {
+  "_import_bacco": {
+   "args": [],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "_read_subgrid_params": {
+   "args": [
+    "param_file"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "get_lh_design": {
+   "args": [
+    "names"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "load_all_zooms": {
+   "args": [
+    "names",
+    "snap",
+    "**overrides"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "load_halo_selection": {
+   "args": [
+    "kind"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "load_mtng": {
+   "args": [
+    "snap",
+    "dm",
+    "**overrides"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "load_zoom": {
+   "args": [
+    "name",
+    "snap",
+    "**overrides"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "mean_std_without_zeros": {
+   "args": [
+    "array"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "pars": {
+   "args": [
+    "i",
+    "coord"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  }
+ },
+ "merger_tree_tools.py": {
+  "build_lookup_index": {
+   "args": [
+    "struct_array",
+    "name1",
+    "name2",
+    "name3",
+    "name4"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 4
+  },
+  "q_pos": {
+   "args": [
+    "mbID",
+    "npart",
+    "BoxSize",
+    "mtng",
+    "idstart"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 4
+  },
+  "tree": {
+   "kind": "class"
+  },
+  "tree.__init__": {
+   "args": [
+    "self",
+    "snap_0",
+    "tree_format",
+    "name",
+    "to_read",
+    "SNAP_INT",
+    "sim"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 6
+  },
+  "tree._sub_treeindex": {
+   "args": [
+    "self",
+    "snap"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "tree.build_inverse_treelink": {
+   "args": [
+    "self",
+    "snap"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "tree.clean_tree": {
+   "args": [
+    "self"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "tree.get_IA_bias_history": {
+   "args": [
+    "self",
+    "ngrid",
+    "damping_scale",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 4
+  },
+  "tree.get_all_progs": {
+   "args": [
+    "self",
+    "snap_0",
+    "depth",
+    "subhalo_indices",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 3
+  },
+  "tree.get_d_bias_history": {
+   "args": [
+    "self",
+    "ngrid",
+    "damping_scale",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 4
+  },
+  "tree.get_exsitu_stellar_mass": {
+   "args": [
+    "self",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "tree.get_main_prog_props": {
+   "args": [
+    "self",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "tree.get_mp_secondary_progenitors": {
+   "args": [
+    "self",
+    "recompute",
+    "save",
+    "sep_int"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 3
+  },
+  "tree.get_redshift": {
+   "args": [
+    "self"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "tree.get_root_info": {
+   "args": [
+    "self",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "tree.get_sec_prog_props": {
+   "args": [
+    "self",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "tree.get_sub_file_props": {
+   "args": [
+    "self",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "tree.read_tree": {
+   "args": [
+    "self"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "tree.read_tree_opt": {
+   "args": [
+    "self"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "tree.walk_subs": {
+   "args": [
+    "self",
+    "recompute",
+    "save"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  }
+ },
+ "paths.py": {
+  "halo_selection_file": {
+   "args": [
+    "kind"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "zoom_output_dir": {
+   "args": [
+    "name"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "zoom_param_file": {
+   "args": [
+    "name"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  }
+ },
+ "utils.py": {
+  "camels_gas_frac": {
+   "args": [
+    "id_name",
+    "par",
+    "nbins",
+    "hfac"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "camels_get_LH_pars": {
+   "args": [
+    "num"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "camels_sSFR": {
+   "args": [
+    "id_name",
+    "par",
+    "nbins",
+    "hfac"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "camels_stellar_mf": {
+   "args": [
+    "sim_cat",
+    "id_name",
+    "par",
+    "num",
+    "nbins",
+    "baseline",
+    "boxsize",
+    "hfac"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 7
+  },
+  "cross_match": {
+   "args": [
+    "zoom",
+    "snap",
+    "name",
+    "mtng_base",
+    "resims_base"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 3
+  },
+  "cross_match_zooms": {
+   "args": [
+    "zoom1",
+    "zoom2"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "dict2d_sum": {
+   "args": [
+    "dict"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "get_mtng_bhmf": {
+   "args": [
+    "mtng",
+    "nbins"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "get_parameters": {
+   "args": [],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "get_zoom_smf": {
+   "args": [
+    "zoom",
+    "snap",
+    "Nbins"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "large_halo_cross_match": {
+   "args": [
+    "zoom",
+    "snap",
+    "name"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "metric": {
+   "args": [
+    "m1",
+    "m2",
+    "cos",
+    "v_ratio",
+    "dist",
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "pars": {
+   "args": [
+    "i",
+    "mass"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "q_pos": {
+   "args": [
+    "mbID",
+    "npart",
+    "BoxSize",
+    "mtng",
+    "idstart"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 4
+  },
+  "read_central_xmatch": {
+   "args": [
+    "sim_name"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "read_cpu": {
+   "args": [
+    "filename",
+    "skiprows"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "redshift_from_snap": {
+   "args": [
+    "snap",
+    "sim_base"
+   ],
+   "kind": "function",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos": {
+   "kind": "class"
+  },
+  "split_halos.__init__": {
+   "args": [
+    "self",
+    "sim",
+    "mtng_base",
+    "zoom_base"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos._load_sim_at_snap": {
+   "args": [
+    "self",
+    "snap",
+    "name"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "split_halos.bh_mf": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.bh_mstar": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.bias_sm": {
+   "args": [
+    "self",
+    "gal_sel",
+    "sel_mask",
+    "bpo",
+    "mhalo_edges",
+    "Nhalos",
+    "vmax_sel",
+    "bins",
+    "recompute"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 8
+  },
+  "split_halos.get_bpo": {
+   "args": [
+    "self",
+    "recompute",
+    "IA_terms"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.get_mstar_2halfrad": {
+   "args": [
+    "self",
+    "isub"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos.get_mstar_2halfrad_vec": {
+   "args": [
+    "self",
+    "isub_vector"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos.get_mstar_30kpc": {
+   "args": [
+    "self",
+    "isub",
+    "z"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos.get_mstar_30kpc_general": {
+   "args": [
+    "self",
+    "sim",
+    "isub",
+    "z"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos.get_mstar_30kpc_general_vec": {
+   "args": [
+    "self",
+    "sim",
+    "isub_vector",
+    "z"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos.get_mstar_30kpc_vec": {
+   "args": [
+    "self",
+    "isub_vector",
+    "z"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos.halo_gas_frac_v2": {
+   "args": [
+    "self",
+    "sel_mask",
+    "draws",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 3
+  },
+  "split_halos.halo_sel": {
+   "args": [
+    "self",
+    "mhalo_edges",
+    "Nhalos",
+    "draws"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 3
+  },
+  "split_halos.halo_sel_setup": {
+   "args": [
+    "self"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 0
+  },
+  "split_halos.halo_smf": {
+   "args": [
+    "self",
+    "Nhalos",
+    "h_frac",
+    "tree",
+    "nbins",
+    "snap"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 3
+  },
+  "split_halos.halo_smf_draws": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins",
+    "draws",
+    "m_30kpc",
+    "depth",
+    "tree",
+    "name"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 7
+  },
+  "split_halos.hmf": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.lite_mtng_gas_frac": {
+   "args": [
+    "self",
+    "sel_mask",
+    "draws",
+    "nbins",
+    "red_fac"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 4
+  },
+  "split_halos.lite_mtng_smf_draws": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins",
+    "draws",
+    "m_30kpc",
+    "red_fac"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 5
+  },
+  "split_halos.q_pos": {
+   "args": [
+    "self",
+    "sim",
+    "npart",
+    "BoxSize",
+    "corr_fac"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 3
+  },
+  "split_halos.rhalf_m2half": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.sSFR_mstar": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.smhm_ratio": {
+   "args": [
+    "self",
+    "sel_mask",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.total_gas_frac": {
+   "args": [
+    "self",
+    "m500_edges",
+    "mass_edges"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  },
+  "split_halos.total_smf": {
+   "args": [
+    "self",
+    "nbins"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 1
+  },
+  "split_halos.total_smf_30kpc": {
+   "args": [
+    "self",
+    "nbins",
+    "red_fac"
+   ],
+   "kind": "method",
+   "n_kwonly_defaults": 0,
+   "n_pos_defaults": 2
+  }
+ }
+}
