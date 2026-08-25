@@ -1,17 +1,18 @@
-/.ipynb_checkpoints
-/src/__pycache__
+# Python bytecode caches (any level)
+__pycache__/
+*.py[cod]
+
+# Jupyter checkpoints (any level)
+**/.ipynb_checkpoints/
+
+# Repo-root generated outputs
 /images
 /gas_fractions
 /halo_selection
-/Notebooks/.ipynb_checkpoints
-/bug_tests/.ipynb_checkpoints
 /results
-/results/fgas
 /gp_train_results
-/scripts/__pycache__
 /mcmc_chains
-/scripts/cross-validation/best_models_k10_nbins10
-/scripts/cross-validation/best_models_k10_nbins10/*
 /cross-match
 /Notebooks/validation/halo_plots
+/scripts/cross-validation/best_models_k10_nbins10
 /scripts/cross-validation/best_models_k10_nbins15

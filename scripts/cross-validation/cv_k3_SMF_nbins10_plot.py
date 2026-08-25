@@ -3,27 +3,20 @@ import matplotlib.pyplot as plt
 import torch
 import gpytorch
 import sys
+import os
 
-sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/src")
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_script_dir, "..", "..", "src"))
 import utils
+import paths
+import loading
+from loading import mean_std_without_zeros
 
-sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/scripts/train")
+sys.path.insert(0, os.path.join(_script_dir, "..", "train"))
 import GP_models
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["mathtext.fontset"] = "dejavuserif"
-
-def mean_std_without_zeros(array):
-    ndraws, nbins = array.shape
-    mean_values = []
-    std_values = []
-
-    for i in range(nbins):
-        non_zero_values = array[:, i][array[:, i] != 0]
-        mean_values.append(np.mean(non_zero_values))
-        std_values.append(np.std(non_zero_values))
-
-    return np.array(mean_values), np.array(std_values)
 
 k = 10
 Nbins_smf = 15
@@ -37,14 +30,14 @@ remain = Nsims % k
 ## Load the SMF data
 zoom_smf = {}
 for i in range(Nsims):
-    zoom_smf[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf), allow_pickle=True)[0]
+    zoom_smf[name_list[i]] = np.load(os.path.join(paths.RESULTS_DIR, "smf", "smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf)), allow_pickle=True)[0]
     mask = ~np.isnan(zoom_smf[name_list[i]]['smf'][0]) & ~np.isnan(zoom_smf[name_list[i]]['mstar'][0])
 
     zoom_smf[name_list[i]]['smf'][0] = zoom_smf[name_list[i]]['smf'][0][mask]
     zoom_smf[name_list[i]]['mstar'][0] = zoom_smf[name_list[i]]['mstar'][0][mask]
 
 # Estimate the SMF simulation error
-smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins14.npy", allow_pickle=True).item()
+smf_draws = np.load(os.path.join(paths.RESULTS_DIR, "smf", "smf_draws", "smf_draws100_nbins14.npy"), allow_pickle=True).item()
 
 mean_smf_nz, err_smf_nz = mean_std_without_zeros(smf_draws['ens_smf'])
 err_log_smf = err_smf_nz / mean_smf_nz / np.log(10)
@@ -68,8 +61,8 @@ diff_all = np.zeros((Nsims, Nbins_smf-1))
 
 count = 0
 for i in range(k):
-    model = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/scripts/cross-validation/best_models_k{:d}_nbins{:d}/full_model_smf_{:d}.pth".format(k, Nbins_smf, i))
-    likelihood = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/scripts/cross-validation/best_models_k{:d}_nbins{:d}/full_likelihood_smf_{:d}.pth".format(k, Nbins_smf, i))
+    model = torch.load(os.path.join(_script_dir, "best_models_k{:d}_nbins{:d}".format(k, Nbins_smf), "full_model_smf_{:d}.pth".format(i)))
+    likelihood = torch.load(os.path.join(_script_dir, "best_models_k{:d}_nbins{:d}".format(k, Nbins_smf), "full_likelihood_smf_{:d}.pth".format(i)))
 
     model.eval()
     likelihood.eval()
@@ -81,7 +74,7 @@ for i in range(k):
         mstar_j = np.log10(zoom_smf[name_list[test_sel[j]]]['mstar'][0])
         smf_j = np.log10(zoom_smf[name_list[test_sel[j]]]['smf'][0])
 
-        test_x = torch.asarray(utils.pars(test_sel[j], mstar_j), dtype=torch.float)
+        test_x = torch.asarray(loading.pars(test_sel[j], mstar_j), dtype=torch.float)
 
         err_log_smf_j = np.interp(mstar_j, np.log10(mstar_mean), err_log_smf)
         observed_pred = likelihood(model(torch.asarray(test_x, dtype=torch.float)), noise=torch.asarray(err_log_smf_j**2, dtype=torch.float))        
@@ -104,4 +97,4 @@ m_min = np.min([np.min(np.log10(zoom_smf[name_list[i]]['mstar'][0])) for i in ra
 m_max = np.max([np.max(np.log10(zoom_smf[name_list[i]]['mstar'][0])) for i in range(Nsims)])
 mstar_array = np.linspace(m_min, m_max, len(err_log_smf))
 
-plt.savefig("/cosmos_storage/home/fgmaion/MTNG-resims/scripts/cross-validation/cv_k3_SMF_nbins{:d}.pdf".format(Nbins_smf), bbox_inches='tight')
+plt.savefig(os.path.join(_script_dir, "cv_k3_SMF_nbins{:d}.pdf".format(Nbins_smf)), bbox_inches='tight')

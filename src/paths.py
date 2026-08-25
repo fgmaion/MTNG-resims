@@ -53,6 +53,19 @@ MTNG_TREE_BASE = os.environ.get(
 MIMIC_BASE = os.environ.get(
     "MTNG_MIMIC_BASE", "/cosmos_storage/simulations/TNG_Family/MTNG_mimic")
 
+#: MTNG-mimic DM output used by split_halos.get_bpo (probabilistic-bias
+#: recompute branch; note genuine legacy name is 'MTNG-mimic' on scratch).
+MIMIC_DM_BASE = os.environ.get(
+    "MTNG_MIMIC_DM_BASE", "/scratch/cosmosims/TNG_Family/MTNG-mimic/output")
+
+#: Cache directory for probabilistic-bias fits (get_bpo save/load).
+BIAS_DIR = os.environ.get(
+    "MTNG_BIAS_DIR", "/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases")
+
+#: CAMELS suite LH catalogs root (camels_* helpers).
+CAMELS_BASE = os.environ.get(
+    "CAMELS_BASE", "/scratch/fgmaion/CAMELS")
+
 #: Latin-hypercube design file (30 x 7), seed 1997; see latin-hypercube/code.py.
 #: Contains '{0}'/'{1}' placeholders for (npoints, seed).
 LH_DESIGN_TEMPLATE = os.environ.get(

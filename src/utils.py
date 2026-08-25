@@ -2,29 +2,77 @@ import numpy as np
 import bacco
 import h5py
 import os
+import paths
 import loading
+
+
+def _mstar_within(sim, isub, z, aperture):
+    """Stellar mass within a fixed 30 kpc aperture for one subhalo, in Msun.
+
+    Parameters
+    ----------
+    sim : bacco.Simulation
+    isub : int
+        Subhalo index.
+    z : float
+        Redshift (used for the physical-aperture mode and the Eddington
+        scatter amplitude).
+    aperture : {'30kpc_comoving', '30kpc_physical'}
+        '30kpc_comoving' reproduces the legacy get_mstar_30kpc behavior;
+        '30kpc_physical' reproduces get_mstar_30kpc_general. Arithmetic is
+        kept bit-identical to the historical implementations.
+
+    Returns
+    -------
+    float
+        Stellar mass in Msun with Behroozi+19 Eddington-bias scatter
+        sigma = min(0.07 + 0.071 z, 0.3) applied multiplicatively.
+    """
+    arr_ids = sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")
+    d_part  = sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / sim.Cosmology.pars['hubble']
+    # d_part is now comoving Mpc
+
+    if aperture == '30kpc_physical':
+        a = 1.0 / (1.0 + z)
+        d_phys = a * np.sqrt(np.sum(d_part**2, axis=1))   # physical Mpc
+        sel = d_phys < 30e-3   # 30 physical kpc
+    else:
+        d = np.sqrt(np.sum(d_part**2, axis=1)) # in Mpc
+        sel = d < 30/1000 # get particles within 30 kpc
+
+    mstar = np.sum(sim.stars['mass'][arr_ids[sel]]) / sim.Cosmology.pars['hubble']  # Msun
+
+    # Eddington bias correction (Behroozi+19)
+    sigma_eb = min(0.07 + 0.071 * z, 0.3)
+    mstar *= 10**(np.random.normal(loc=0, scale=sigma_eb))
+
+    return mstar
 
 class split_halos():
 
     def __init__(self, sim, mtng_base=None, zoom_base=None):
+        """Per-zoom measurement toolbox bound to one bacco.Simulation.
+
+        Parameters
+        ----------
+        sim : bacco.Simulation
+            The simulation object to measure.
+        mtng_base, zoom_base : str, optional
+            Base directories of the parent box and zoom suite (default:
+            paths.MTNG_BASE / paths.RESIMS_BASE).
+        """
         self.sim = sim
         if mtng_base is None:
-            self.mtng_base = mtng_base+""
-            try:
-                os.path.isdir(self.mtng_base)
-            except:
-                raise FileNotFoundError(f"No such file or directory: {self.mtng_base}")
-        else:
-            self.mtng_base = mtng_base
+            mtng_base = paths.MTNG_BASE
+        if not os.path.isdir(mtng_base):
+            raise FileNotFoundError("No such directory: {}".format(mtng_base))
+        self.mtng_base = mtng_base
 
         if zoom_base is None:
-            self.zoom_base = zoom_base+""
-            try:
-                os.path.isdir(self.zoom_base)
-            except:
-                raise FileNotFoundError(f"No such file or directory: {self.zoom_base}")
-        else:
-            self.zoom_base = zoom_base
+            zoom_base = paths.RESIMS_BASE
+        if not os.path.isdir(zoom_base):
+            raise FileNotFoundError("No such directory: {}".format(zoom_base))
+        self.zoom_base = zoom_base
 
 
     def halo_sel_setup(self,):
@@ -43,20 +91,10 @@ class split_halos():
 
 
     def q_pos(self, sim, npart=4320, BoxSize=500, corr_fac=125):
-        
-        gal_mbid = sim.sub['IDMostbound']
-
-        q = np.zeros(gal_mbid.shape + (3,), dtype=np.float32)
-
-        q[..., 0] = gal_mbid // npart**2
-        q[..., 1] = (gal_mbid // npart) % npart
-        q[..., 2] = gal_mbid % npart
-
-        # normalize correctly
-        q *= (BoxSize / npart)
-
-        q[..., 0] = ( q[...,0] - corr_fac ) % BoxSize # Correction due to differences between MTNG and MTNG-mimic
-
+        """Lagrangian positions of subhalos' most-bound particles, with the
+        zoom->MTNG coordinate correction ((x - corr_fac) % BoxSize)."""
+        q = q_pos(sim.sub['IDMostbound'], npart=npart, BoxSize=BoxSize)
+        q[..., 0] = (q[..., 0] - corr_fac) % BoxSize
         return q
 
     def halo_sel(self, mhalo_edges=None, Nhalos=None, draws=1):
@@ -96,50 +134,19 @@ class split_halos():
 
         return {'sel':fof_choice, 'h_frac':halo_frac}
 
-    # Hardcoded fiducial-zoom cosmology. FILL IN THE ACTUAL VALUES.
-    _FIDUCIAL_COSMO = {
-        'tau':    0.0965,
-        'ns':     0.9667,
-        'sigma8': 0.8159,
-    }
+    # Fiducial-zoom cosmology (single source: paths.COSMO).
+    _FIDUCIAL_COSMO = paths.COSMO
 
     def _load_sim_at_snap(self, snap, name='fiducial'):
         """Load a bacco.Simulation at an arbitrary snapshot."""
-        base = self.zoom_base+"/{}/hydro_output/".format(name)
-
-        return bacco.Simulation(
-            basedir=base,
-            halo_file="groups_{0:03d}/fof_subhalo_tab_{0:03d}".format(snap),
-            sim_format='TNG500', fixedPk=True, use_orphans=False,
-            tau=self._FIDUCIAL_COSMO['tau'],
-            ns=self._FIDUCIAL_COSMO['ns'],
-            sigma8=self._FIDUCIAL_COSMO['sigma8'],
-            use_ids=False,
-            tree_file="groups_{0:03d}/subhalo_prog_{0:03d}".format(snap),
-            dm_file="snapdir_{0:03d}/snapshot_{0:03d}".format(snap),
-            numpart=4320,
-        )
+        return loading.load_zoom(
+            name, snap=snap, use_ids=False,
+            tree_file="groups_{0:03d}/subhalo_prog_{0:03d}".format(snap))
 
     def get_mstar_30kpc_general(self, sim, isub, z):
-        """
-        Stellar mass within 30 PHYSICAL kpc for a subhalo in the given sim, in Msun.
-        Assumes get_halo_star_particles(..., relative=True) returns comoving Mpc/h.
-        """
-        arr_ids = sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")
-        d_part  = sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / sim.Cosmology.pars['hubble']
-        # d_part is now comoving Mpc
-
-        a = 1.0 / (1.0 + z)
-        d_phys = a * np.sqrt(np.sum(d_part**2, axis=1))   # physical Mpc
-
-        sel = d_phys < 30e-3   # 30 physical kpc
-        mstar = np.sum(sim.stars['mass'][arr_ids[sel]]) / sim.Cosmology.pars['hubble']  # Msun
-
-        # Eddington bias correction (Behroozi+19)
-        sigma_eb = min(0.07 + 0.071 * z, 0.3)
-        mstar *= 10**(np.random.normal(loc=0, scale=sigma_eb))
-
-        return mstar
+        """Stellar mass within 30 PHYSICAL kpc for a subhalo in the given
+        sim, in Msun."""
+        return _mstar_within(sim, isub, z, '30kpc_physical')
 
     def get_mstar_30kpc_general_vec(self, sim, isub_vector, z):
         """Vectorized version of get_mstar_30kpc_general over isub."""
@@ -150,6 +157,8 @@ class split_halos():
         return f(isub_vector)
 
     def total_smf(self, nbins=100):
+        """Volume-complete stellar mass function of the whole box, using
+        subhalo stellar masses within their parent FoF halo (M200b > 1e9)."""
 
         bins = np.logspace(9, 12.5, nbins)
         counts     = np.zeros(nbins-1)
@@ -169,24 +178,10 @@ class split_halos():
         return  {'smf':norm * hist, 'bins':bins, 'mstar':mstar_mean / hist}
 
     def get_mstar_30kpc(self, isub, z):
-        """
-            Calculates stellar mass within 30 kpc for a given subhalo ID.
-            Stellar mass is outputed in M_sun units.
-        """
-
-        arr_ids = self.sim.get_halo_star_particles(isub, sDM=False, key='pos_ids', mode="subhalo")    
-        d_part  = self.sim.get_halo_star_particles(isub, sDM=False, key='pos', mode="subhalo", relative=True) / self.sim.Cosmology.pars['hubble']
-
-        d = np.sqrt(np.sum(d_part**2, axis=1)) # in Mpc
-
-        sel = d < 30/1000 # get particles within 30 kpc
-        mstar = np.sum( self.sim.stars['mass'][arr_ids[sel]] ) / self.sim.Cosmology.pars['hubble'] # in Msun
-
-        # Apply Eddington bias correction from Behroozi+19
-        sigma_eb = min(0.07 + 0.071*z, 0.3)
-        mstar *= 10**( np.random.normal(loc=0, scale=sigma_eb) )
-
-        return mstar
+        """Stellar mass within 30 COMOVING kpc for a subhalo ID, in Msun
+        (legacy behavior; for a physical aperture use
+        get_mstar_30kpc_general)."""
+        return _mstar_within(self.sim, isub, z, '30kpc_comoving')
 
     def get_mstar_30kpc_vec(self, isub_vector, z):
             """
@@ -225,6 +220,8 @@ class split_halos():
         return vectorized_func(isub_vector)
 
     def rhalf_m2half(self, sel_mask=None, nbins=100):
+        """Size-mass relation: half-mass radius vs stellar mass within
+        2 x half-mass radius, upweighted when sel_mask is given."""
         
         bins = np.logspace(8, 13, nbins)
         counts      = np.zeros(nbins-1)
@@ -281,6 +278,8 @@ class split_halos():
         return  {'rhalf_mean':rhalf_mean, 'm2half_mean':m2half_mean, 'rhalf':rhalf_total, 'm2half':m2half_total, 'counts':counts}
 
     def sSFR_mstar(self, sel_mask=None, nbins=100):
+        """Specific star-formation rate vs stellar mass (30 comoving kpc),
+        upweighted with halo_sel sampling fractions when sel_mask is given."""
         
         bins = np.logspace(8, 13, nbins)
         counts      = np.zeros(nbins-1)
@@ -319,6 +318,8 @@ class split_halos():
         return  {'sSFR_mean':sSFR_mean, 'mstar_mean':mstar_mean, 'counts':counts}
 
     def smhm_ratio(self, sel_mask=None, nbins=100):
+        """Stellar-mass-halo-mass relation (30 comoving kpc stellar mass vs
+        FoF M200b), upweighted when sel_mask is given."""
         
         bins = np.logspace(11, 15, nbins)
         counts      = np.zeros(nbins-1)
@@ -358,6 +359,8 @@ class split_halos():
         return  {'smhm_mean':smhm_mean, 'm200c_mean':m200c_mean}
 
     def bh_mstar(self, sel_mask=None, nbins=100):
+        """Black-hole mass vs stellar mass (30 comoving kpc), upweighted
+        when sel_mask is given."""
         
         bins       = np.logspace(8, 13, nbins)
         counts     = np.zeros(nbins-1)
@@ -478,7 +481,7 @@ class split_halos():
         nsubs = self.sim.fof['halo_nsubs']
 
         snap = 264 - depth
-        sim_base = self.zoom_base+"/{}/hydro_output/".format(name)
+        sim_base = paths.zoom_output_dir(name) + os.sep
         z = redshift_from_snap(snap, sim_base)
 
         # High-z setup, only when needed
@@ -1016,6 +1019,12 @@ class split_halos():
     def get_bpo(
             self, recompute=False, IA_terms=("J2=2", "J222=", "J2-2-2-")
             ):
+        """Probabilistic IA-bias parameters (bpo) of the subhalo population.
+
+        recompute=True reruns the pb fit on the MTNG-mimic DM output
+        (paths.MIMIC_DM_BASE) and caches to paths.BIAS_DIR; otherwise the
+        cached fit for the simulation redshift is loaded.
+        """
         
         z = 1 / self.sim.Cosmology.expfactor - 1
         
@@ -1023,8 +1032,8 @@ class split_halos():
 
             import bacco.probabilistic_bias as pb
 
-            # MTNG Mimic
-            dir_name_dm = "/scratch/cosmosims/TNG_Family/MTNG-mimic/output/"
+            # MTNG Mimic DM output (paths.MIMIC_DM_BASE)
+            dir_name_dm = paths.MIMIC_DM_BASE
 
             dm_mtng = bacco.Simulation(
                 basedir=dir_name_dm, halo_file="groups_085/fof_subhalo_history_tab_orph_wweight_085",
@@ -1047,10 +1056,11 @@ class split_halos():
 
             bias = pbm.fit_bias(model=IA_model, tracer_q=q, error='qjack4', tracer_properties={'I':S})
             bpo = np.float32(IA_model.bpo)
-            np.save("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
+            os.makedirs(paths.BIAS_DIR, exist_ok=True)
+            np.save(os.path.join(paths.BIAS_DIR, "IA_bias_so0_mtng_z{:.2f}".format(z)), [{'bias':bias, 'bpo':bpo}])
         
         else:
-            load_bias = np.load("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
+            load_bias = np.load(os.path.join(paths.BIAS_DIR, "IA_bias_so0_mtng_z{:.2f}.npy".format(z)), allow_pickle=True)[0]
             bpo = load_bias['bpo']
 
         return bpo
@@ -1116,59 +1126,81 @@ class split_halos():
 
         return  {'f_gas':f_gas, 'm500':m500c_mean}
 
-def cross_match(zoom, snap, name=None, mtng_base=None, resims_base=None):
-    '''
-    Cross-match two catalogs of halos based on their position and properties.
+def _cross_match_mtng_impl(zoom, snap, name, min_mass, cache_stem,
+                           mtng_base=None, resims_base=None):
+    """Cross-match zoom-simulation halos with the MTNG halo selection.
+
+    Shared implementation behind cross_match() (full selection) and
+    large_halo_cross_match() (min_mass > 1e13).
+
     Parameters
     ----------
     zoom : bacco.Simulation
-        The simulation to match with MTNG
+        The simulation to match with MTNG.
     snap : int
-        The snapshot number
-    name : str, optional
-        The name of the output dictionary, by default None
-        
+        Snapshot number.
+    name : str or None
+        If given, look for a cached result ({cache_stem}_{name}.npy) and
+        save to it after computing. Cache directories, in priority order:
+        ``resims_base/{halo_selection,cross-match}/`` when ``resims_base``
+        is passed (legacy layout), otherwise paths.CROSSMATCH_DIR/
+        (env-overridable via MTNG_CROSSMATCH). Note the historical code
+        read caches from halo_selection/ but wrote to cross-match/; both
+        are now unified under the cache directory.
+    min_mass : float or None
+        If given, only match selected MTNG halos with M200b above this
+        (in Msun).
+    cache_stem : str
+        Cache file prefix ("cross_match" or "large_halo_cross_match").
+    mtng_base : str, optional
+        MTNG base directory override (default: paths.MTNG_BASE).
+
     Returns
     -------
     dict
-        A dictionary with the following keys:
-        - ind: the index of the matched halo in the zoom simulation
-        - d: the distance between the matched halos
-    '''
-
+        - ind: index of the matched halo in the zoom simulation
+        - d: distance between the matched halos
+    """
     import scipy
 
     if name is not None:
-        try:
-            if resims_base is None:
-                load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
-            else:
-                load_match = np.load(resims_base + "/halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
-
-            return load_match
-        except:
-            pass
+        cache_name = "{}_{}.npy".format(cache_stem, name)
+        if resims_base is not None:
+            candidates = [os.path.join(resims_base, "halo_selection", cache_name),
+                          os.path.join(resims_base, "cross-match", cache_name)]
+        else:
+            candidates = [os.path.join(paths.CROSSMATCH_DIR, cache_name)]
+        for cand in candidates:
+            try:
+                return np.load(cand, allow_pickle=True)[0]
+            except Exception:
+                pass
 
     # Load MTNG
     print("Loading the MTNG Simulation")
     if mtng_base is None:
-        mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
+        mtng = loading.load_mtng(snap=snap)
     else:
         mtng = bacco.utils.load_MTNG(adr=mtng_base, snap=snap)
-    mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
-    mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
+    mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - paths.X_SHIFT) % paths.BOXSIZE
+    mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - paths.X_SHIFT) % paths.BOXSIZE
     print("Finished loading the MTNG Simulation")
 
     # Load halo selection
     if resims_base is None:
-        filename = "/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt"
+        final_sel = loading.load_halo_selection("hydro")
     else:
-        filename = resims_base + "/halo_selection/hydro_halo_sel_1pmbin.txt"
-    with open(filename) as f:
         final_sel = []
-        for line in f.readlines():
-            final_sel.append(int(line.split()[0]))
-    final_sel = np.array(final_sel)
+        with open(os.path.join(resims_base, "halo_selection",
+                               "hydro_halo_sel_1pmbin.txt")) as f:
+            for line in f.readlines():
+                final_sel.append(int(line.split()[0]))
+        final_sel = np.array(final_sel)
+
+    # Optional mass cut on the MTNG side (large_halo_cross_match)
+    if min_mass is not None:
+        M_mtng = 1e10 * mtng.fof['halo_m200b'][final_sel]
+        final_sel = final_sel[M_mtng > min_mass]
 
     # position matching
     X1 = zoom.fof['halo_pos']
@@ -1198,150 +1230,68 @@ def cross_match(zoom, snap, name=None, mtng_base=None, resims_base=None):
         xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
         dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
 
-    if name is None:
-        return {'ind':xmatch, 'd':dmatch}
-    else:
-        if resims_base is None:
-            np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+    if name is not None:
+        if resims_base is not None:
+            outdir = os.path.join(resims_base, "cross-match")
         else:
-            np.save(resims_base + "/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
-        return {'ind':xmatch, 'd':dmatch}
+            outdir = paths.CROSSMATCH_DIR
+        os.makedirs(outdir, exist_ok=True)
+        np.save(os.path.join(outdir, cache_name),
+                [{'ind':xmatch, 'd':dmatch}])
+
+    return {'ind':xmatch, 'd':dmatch}
 
 
-def large_halo_cross_match(zoom, snap, name=None):
-    '''
-    Cross-match large halos in the multi-zoom resimulations with their counterparts in MTNG.
+def cross_match(zoom, snap, name=None, mtng_base=None, resims_base=None):
+    """Cross-match zoom halos with the full MTNG halo selection.
+
     Parameters
     ----------
     zoom : bacco.Simulation
-        The simulation to match with MTNG
+        The simulation to match with MTNG.
     snap : int
-        The snapshot number
+        The snapshot number.
     name : str, optional
-        The name of the output dictionary, by default None
-        
+        Name of the cached match to read/write, by default None.
+    mtng_base, resims_base : str, optional
+        Directory overrides (default: paths.MTNG_BASE / paths.CROSSMATCH_DIR
+        + repo halo selection).
+
     Returns
     -------
     dict
-        A dictionary with the following keys:
-        - ind: the index of the matched halo in the zoom simulation
-        - d: the distance between the matched halos
-    '''
+        - ind: index of the matched halo in the zoom simulation
+        - d: distance between the matched halos
+    """
+    return _cross_match_mtng_impl(zoom, snap, name, None, "cross_match",
+                                  mtng_base=mtng_base, resims_base=resims_base)
 
-    import scipy
 
-    if name is not None:
-        try:
-            load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/large_halo_cross_match_{}.npy".format(name), allow_pickle=True)[0]
-            return load_match
-        except:
-            pass
+def large_halo_cross_match(zoom, snap, name=None):
+    """Cross-match the M200b > 1e13 Msun halos of the MTNG selection with
+    their counterparts in a zoom resimulation.
 
-    # Load MTNG
-    mtng = bacco.utils.load_MTNG(adr=self.mtng_base+"/", snap=snap)
-    mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
-    mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
-
-    # Load halo selection
-    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
-        final_sel = []
-        for line in f.readlines():
-            final_sel.append(int(line.split()[0]))
-    final_sel = np.array(final_sel)
-
-    # Get halo masses in the MTNG
-    M_mtng = 1e10 * mtng.fof['halo_m200b'][final_sel]
-    subsel = M_mtng > 1e13
-
-    final_sel = final_sel[subsel]
-
-    # position matching
-    X1 = zoom.fof['halo_pos']
-    X2 = mtng.fof['halo_pos'][final_sel]
-
-    kdt = scipy.spatial.KDTree(X1, boxsize=mtng.header['BoxSize'])
-    dist, ind = kdt.query(X2, k=100)
-
-    # load halo properties
-    M_mtng = 1e10 * mtng.fof['halo_m200b'][final_sel]
-    M_zoom = 1e10 * zoom.fof['halo_m200b'][ind]
-
-    v_zoom = zoom.fof['halo_vel'][ind,:]
-    v_mtng = mtng.fof['halo_vel'][final_sel,:]
-
-    cos = np.sum(v_zoom * v_mtng[:,np.newaxis,:], axis=2) / ( np.linalg.norm(v_zoom, axis=2) * np.linalg.norm(v_mtng, axis=1)[:,np.newaxis] )
-    v_ratio = np.linalg.norm(v_zoom, axis=2) / np.linalg.norm(v_mtng, axis=1)[:,np.newaxis]
-
-    d = metric(M_mtng, M_zoom, cos, v_ratio, dist, 1, 1, 1, 1)
-
-    xmatch = np.zeros(len(M_zoom), dtype=int)
-    dmatch = np.zeros(len(M_zoom))
-    metr = np.zeros(len(M_zoom))
-
-    for i in range(len(final_sel)):
-        metr[i] = d[i].min()
-        xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
-        dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
-
-    if name is None:
-        return {'ind':xmatch, 'd':dmatch}
-    else:
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/large_halo_cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
-        return {'ind':xmatch, 'd':dmatch}
-
-def cross_match_zooms(zoom1, zoom2):
-    '''
-    Cross-match two catalogs of halos based on their position and properties.
     Parameters
     ----------
-    zoom1 : bacco.Simulation
-        First zoom
-    zoom2: bacco.Simulation
-        Second zoom
+    zoom : bacco.Simulation
+        The simulation to match with MTNG.
+    snap : int
+        The snapshot number.
+    name : str, optional
+        Name of the cached match to read/write, by default None.
 
     Returns
     -------
     dict
-        A dictionary with the following keys:
-        - ind: the index of the matched halo in the zoom simulation
-        - d: the distance between the matched halos
-    '''
+        - ind: index of the matched halo in the zoom simulation
+        - d: distance between the matched halos
+    """
+    return _cross_match_mtng_impl(zoom, snap, name, 1e13,
+                                  "large_halo_cross_match")
 
-    import numpy.ma as ma
-    import scipy
-
-    sel = np.where(zoom1.fof['halo_m200b']>0)[0]
-
-    # position matching
-    X1 = zoom1.fof['halo_pos'][sel]
-    X2 = zoom2.fof['halo_pos']
-
-    kdt = scipy.spatial.KDTree(X1, boxsize=zoom1.header['BoxSize'])
-    dist, ind = kdt.query(X2, k=100)
-
-    # load halo properties
-    M1 = 1e10 * zoom1.fof['halo_m200b'][sel][ind]
-    M2 = 1e10 * zoom2.fof['halo_m200b']
-
-    pos1 = np.transpose(zoom1.fof['halo_pos'][sel][ind], (2,0,1))
-    pos2 = np.transpose(zoom2.fof['halo_pos'].T)
-
-    vmax_1 = zoom1.sub['vmax'][zoom1.fof['halo_firstsub'][sel][ind]]
-    vmax_2 = zoom2.sub['vmax'][zoom2.fof['halo_firstsub']]
-
-    d = metric(M2,M1,vmax_2,vmax_1,dist,5,1,1)
-
-    xmatch = np.zeros(len(M1), dtype=int)
-    dmatch = np.zeros(len(M1))
-    metr = np.zeros(len(M1))
-
-    for i in range(len(M1)):
-        metr[i] = d[i].min()
-        xmatch[i] = ind[i,np.where(d[i]==metr[i])[0][0]]
-        dmatch[i] = dist[i,np.where(d[i]==metr[i])[0][0]]
-    return {'ind':xmatch, 'd':dmatch}
 
 def read_cpu(filename=None, skiprows=[]):
+    """Parse an Arepo cpu.csv timing file into a dict of float columns."""
     with open(filename) as f:
         lines = f.readlines()
 
@@ -1368,6 +1318,7 @@ def read_cpu(filename=None, skiprows=[]):
 
 
 def dict2d_sum(dict):
+    """Sum the inner lists of a list-of-lists into a 1D array."""
     res_sum = np.zeros(len(dict))
     for i in range(len(dict)):
         for j in range(len(dict[i])):
@@ -1484,6 +1435,8 @@ def camels_gas_frac(id_name, par, nbins=10, hfac=0.6711):
     return {'f_gas':f_gas, 'm500c':m500c_mean}
 
 def camels_sSFR(id_name, par, nbins=20, hfac=0.6711):
+    """sSFR-M* relation for a CAMELS LH run (id_name catalog, par variant
+    selector), binned into nbins stellar-mass bins."""
 
     bins = np.logspace(8, 13, nbins)
     
@@ -1517,8 +1470,10 @@ def camels_sSFR(id_name, par, nbins=20, hfac=0.6711):
     return {'sSFR':sSFR, 'mstar':mstar_mean}
 
 def camels_get_LH_pars(num=None):
+    """Read the 4 CAMELS LH subgrid parameters of run ``num`` from its
+    group catalog attributes (paths.CAMELS_BASE layout)."""
     # catalog name
-    catalog = '/scratch/fgmaion/CAMELS/LH/LH_{:d}/groups_090.hdf5'.format(num)
+    catalog = os.path.join(paths.CAMELS_BASE, 'LH', 'LH_{:d}'.format(num), 'groups_090.hdf5')
 
     # open the catalogue
     f = h5py.File(catalog, 'r')
@@ -1534,52 +1489,58 @@ def camels_get_LH_pars(num=None):
     return np.asarray([par1, par2, par3, par4])
 
 def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
-    
+    """Decode Lagrangian grid positions from particle/halo IDs.
+
+    Parameters
+    ----------
+    mbID : array_like of int
+        Most-bound-particle (or halo) IDs.
+    npart : int
+        Particles along one side of the Lagrangian grid (4320 for MTNG).
+    BoxSize : float
+        Comoving box size (500 Mpc/h for MTNG).
+    mtng : bool
+        Handle the MTNG ID convention (offset +/-20155392000/80621568000).
+    idstart : int
+        ID offset of the first particle.
+
+    Returns
+    -------
+    (len(mbID), 3) float32 array
+        Lagrangian positions in [0, BoxSize). The input array is NOT
+        modified (a copy is made; coordinates are wrapped with % BoxSize).
+
+    Notes
+    -----
+    Phase-3 note: this canonical implementation unifies the old utils.q_pos
+    (which mutated its input in place and did not wrap) and
+    merger_tree_tools.q_pos (copy + wrap); both names now use this safe
+    behavior.
+    """
+    import copy
+
+    _mbID = copy.deepcopy(mbID)
+
     if mtng:
-        mbID[np.where(mbID>=1)] -= 20155392000
-        mbID[np.where(mbID<1)] += 80621568000
+        _mbID[np.where(mbID>=1)] -= 20155392000
+        _mbID[np.where(mbID<1)] += 80621568000
 
-    q = np.zeros(mbID.shape + (3,), dtype=np.float32)
+    q = np.zeros(_mbID.shape + (3,), dtype=np.float32)
 
-    q[..., 0] = (mbID - idstart) // npart**2
-    q[..., 1] = ( (mbID - idstart) // npart) % npart
-    q[..., 2] = (mbID - idstart) % npart
+    q[..., 0] = (_mbID - idstart) // npart**2
+    q[..., 1] = ( (_mbID - idstart) // npart) % npart
+    q[..., 2] = (_mbID - idstart) % npart
 
     # normalize correctly
     q *= (BoxSize / npart)
+    q = q % BoxSize
 
     return q
 
-def read_central_xmatch(sim_name):
-    mtng_id = []
-    zoom_id = []
-
-    dx = []
-    dy = []
-    dz = []
-
-    with open("/lscratch/kwalsen/xmatch/264/"+sim_name+"/selection_xmatch_deltas.csv", 'r') as f:
-        for i, line in enumerate(f.readlines()):
-            if i==0:
-                continue
-            line = line.strip('\n').split(',')
-            mtng_id.append(int(line[1]))
-
-            try:
-                zoom_id.append(int(line[2]))
-                dx.append(float(line[3]))
-                dy.append(float(line[4]))
-                dz.append(float(line[5]))
-            except:
-                zoom_id.append(-1)
-                dx.append(0)
-                dy.append(0)
-                dz.append(0)
-                print("failed for line: {}".format(line))
-
-    return {'mtng_id': np.array(mtng_id), 'zoom_id': np.array(zoom_id), 'dx': np.array(dx), 'dy': np.array(dy), 'dz': np.array(dz)}
-
 def metric(m1, m2, cos, v_ratio, dist, a, b, c, d):
+    """Pairwise halo-matching metric: weighted sum of mass ratio, velocity
+    ratio, velocity-angle and distance terms (+ penalty for low-mass
+    counterparts). m1 (N,), m2 (M,) -> (N, M)."""
     d_m = np.abs((1 - m1[..., np.newaxis]/m2) / 0.2)
     d_v = np.abs((1 - v_ratio) / 0.2)
     d_theta = (1-cos)/0.2
@@ -1591,34 +1552,20 @@ def metric(m1, m2, cos, v_ratio, dist, a, b, c, d):
 
     return dist*a + d_m*b + d_v*c + d_theta*d + penalty
 
-def pars(i, mstar):
-
-    arr = np.vstack( (mstar, np.ones(len(mstar)) * wind_en[i],\
-                        np.ones(len(mstar)) * wind_vel[i],\
-                        np.ones(len(mstar)) * rho_rec[i],\
-                        np.ones(len(mstar)) * sf_ts[i],\
-                        np.ones(len(mstar)) * ef_kin[i],\
-                        np.ones(len(mstar)) * ef_high[i],\
-                        np.ones(len(mstar)) * f_re[i])).T
-
-    return arr
-
 def get_zoom_smf(zoom, snap=264, Nbins=50):
+    """SMF of one zoom simulation via the halo-selection cross-match, with
+    h_frac upweighting to volume-complete MTNG statistics."""
 
     # BE CAREFUL. Right now this works for snap=264, but I am not sure if it would work for other redshifts
-    mtng = bacco.utils.load_MTNG(adr=self.mtng_base+"/", snap=264)
-    mtng.fof['halo_pos'][:,0] = ( mtng.fof['halo_pos'][:,0] - 125 ) % 500
+    mtng = loading.load_mtng(snap=264)
+    mtng.fof['halo_pos'][:,0] = ( mtng.fof['halo_pos'][:,0] - paths.X_SHIFT ) % paths.BOXSIZE
     
     xmatch = cross_match(zoom, snap=264)
 
     m200b = np.log10(1e10 * mtng.fof['halo_m200b'])
     
     # load the halo-selection in the fiducial MTNG
-    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
-        final_sel = []
-        for line in f.readlines():
-            final_sel.append(int(line.split()[0]))
-    final_sel = np.array(final_sel)
+    final_sel = loading.load_halo_selection("hydro")
 
     mbins = np.concatenate(
         (np.arange(11, 11.5, 0.0025),
@@ -1643,6 +1590,7 @@ def get_zoom_smf(zoom, snap=264, Nbins=50):
     return zoom_smf
 
 def get_mtng_bhmf(mtng, nbins=20):
+    """Black-hole mass function of a simulation from subhalo BHMass."""
     
     bins = np.logspace(6, 10.5, nbins)
 
@@ -1678,20 +1626,13 @@ def get_parameters():
     return tuple(design[:, j] for j in range(design.shape[1]))
 
 def pars(i, mass):
-
-    wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re = get_parameters()
-
-    arr = np.vstack( ( mass, np.ones(len(mass)) * wind_en[i],\
-                        np.ones(len(mass)) * wind_vel[i],\
-                        np.ones(len(mass)) * rho_rec[i],\
-                        np.ones(len(mass)) * sf_ts[i],\
-                        np.ones(len(mass)) * ef_kin[i],\
-                        np.ones(len(mass)) * ef_high[i],\
-                        np.ones(len(mass)) * f_re[i])).T
-
-    return arr
+    """Legacy GP design-vector builder (8 columns: mass + 7 subgrid
+    parameters). Delegates to loading.pars()."""
+    return loading.pars(i, mass)
 
 def redshift_from_snap(snap, sim_base):
+    """Redshift of snapshot ``snap`` from the simulation's merger-tree
+    times (``<sim_base>treedata/trees.0.hdf5``)."""
     with h5py.File(sim_base + "treedata/trees.0.hdf5", 'r') as f:
         redshifts = f['TreeTimes']['Redshift'][...]
     return redshifts[snap]

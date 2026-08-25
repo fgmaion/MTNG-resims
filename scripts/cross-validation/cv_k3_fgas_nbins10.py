@@ -7,6 +7,7 @@ import numpy as np
 import random
 import bacco
 import sys
+import os
 import copy
 
 torch.set_num_threads(16)
@@ -14,10 +15,13 @@ torch.set_num_threads(16)
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
-sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/src")
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_script_dir, "..", "..", "src"))
 import utils
+import paths
+import loading
 
-sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/scripts/train")
+sys.path.insert(0, os.path.join(_script_dir, "..", "train"))
 import GP_models
 
 #####################
@@ -80,16 +84,17 @@ def train(model, likelihood, n_restarts=10, steps_per_restart=1000):
 name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']
 Nsims = len(name_list)
 
-wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re = utils.get_parameters()
+# Subgrid parameters of the 31 runs, standardized (legacy column order)
+wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re = \
+    tuple(loading.get_lh_design()['design'][:, j] for j in range(7))
 
 fid_pars = np.array([wind_en[30], wind_vel[30], rho_rec[30], sf_ts[30], ef_kin[30], ef_high[30], f_re[30]])
-
-# Load fgas
 Nbins_fgas = 10
 
+# Load fgas
 zoom_fgas = {}
 for i in range(len(name_list)):
-    zoom_fgas[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_{}_Nbins{:d}.npy".format(name_list[i], Nbins_fgas), allow_pickle=True)[0]
+    zoom_fgas[name_list[i]] = np.load(os.path.join(paths.RESULTS_DIR, "fgas", "fgas_{}_Nbins{:d}.npy".format(name_list[i], Nbins_fgas)), allow_pickle=True)[0]
 
 # Filter NaNs
 for i in range(len(name_list)):
@@ -98,8 +103,8 @@ for i in range(len(name_list)):
     zoom_fgas[name_list[i]]['f_gas'][0] = zoom_fgas[name_list[i]]['f_gas'][0][mask]
     zoom_fgas[name_list[i]]['m500c'][0] = zoom_fgas[name_list[i]]['m500c'][0][mask]
 
-# Estimate the SMF simulation error
-fgas_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_draws/fgas_draws100_nbins10.npy", allow_pickle=True).item()
+# Estimate the fgas simulation error
+fgas_draws = np.load(os.path.join(paths.RESULTS_DIR, "fgas", "fgas_draws", "fgas_draws100_nbins10.npy"), allow_pickle=True).item()
 
 err_fgas = np.std(fgas_draws['ens_fgas'], axis=0)
 
@@ -121,13 +126,13 @@ for i in range(k):
     train_sel = [j for j in range(Nsims) if j not in test_sel]
 
     # Build the training arrays
-    pars_global = utils.pars(train_sel[0], np.log10(zoom_fgas[name_list[train_sel[0]]]['m500c'][0]) )
+    pars_global = loading.pars(train_sel[0], np.log10(zoom_fgas[name_list[train_sel[0]]]['m500c'][0]) )
     fgas_global = zoom_fgas[name_list[train_sel[0]]]['f_gas'][0]
 
     for j in range(len(train_sel)):
         m500c = np.log10(zoom_fgas[name_list[train_sel[j]]]['m500c'][0])
 
-        arr = utils.pars(train_sel[j], m500c)
+        arr = loading.pars(train_sel[j], m500c)
 
         pars_global = np.vstack((pars_global, arr))
 
@@ -144,7 +149,8 @@ for i in range(k):
     models[i].load_state_dict(best_state[i]['model'])
     likes[i].load_state_dict(best_state[i]['likelihood'])
 
-    save_path = "/cosmos_storage/home/fgmaion/MTNG-resims/scripts/cross-validation/best_models_k{:d}_nbins{:d}/".format(k, Nbins_fgas)
+    save_path = os.path.join(_script_dir, "best_models_k{:d}_nbins{:d}".format(k, Nbins_fgas))
+    os.makedirs(save_path, exist_ok=True)
 
-    torch.save(models[i], save_path+"full_model_fgas_{:d}.pth".format(i))
-    torch.save(likes[i], save_path+"full_likelihood_fgas_{:d}.pth".format(i))
+    torch.save(models[i], os.path.join(save_path, "full_model_fgas_{:d}.pth".format(i)))
+    torch.save(likes[i], os.path.join(save_path, "full_likelihood_fgas_{:d}.pth".format(i)))

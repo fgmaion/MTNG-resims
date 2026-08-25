@@ -311,6 +311,37 @@ def load_mtng(snap=paths.SNAP_Z0, dm=False, **overrides):
     return bacco.Simulation(**kw)
 
 
+def load_mtng_lite(snap=paths.SNAP_Z0, **overrides):
+    """Load the 'lite' MTNG snapshot variant (64x-diluted dark matter),
+    as used by the uncertainty-quantification scripts.
+
+    Parameters
+    ----------
+    snap : int
+        Snapshot to attach (default: paths.SNAP_Z0 = 264).
+    **overrides
+        Extra/replacement keyword arguments for bacco.Simulation.
+
+    Returns
+    -------
+    bacco.Simulation
+    """
+    bacco = _import_bacco()
+    cosmo = paths.COSMO
+    kw = dict(
+        verbose=False,
+        basedir=os.path.join(paths.MTNG_BASE, ''),
+        halo_file='groups_{0:03d}/fof_subhalo_tab_{0:03d}'.format(snap),
+        dm_file='64/lite_snap_{0:03d}_mod/diluted_snapshot_{0:03d}'.format(snap),
+        tau=cosmo['tau'], ns=cosmo['ns'], sigma8=cosmo['sigma8'],
+        numpart=int(4320**3/64),
+        sim_format='TNG500',
+        use_orphans=False, total_snapshots=265, use_ids=False,
+    )
+    kw.update(overrides)
+    return bacco.Simulation(**kw)
+
+
 # --------------------------------------------------------------------------
 # Halo selection
 # --------------------------------------------------------------------------
@@ -335,3 +366,39 @@ def load_halo_selection(kind='hydro'):
             if cols:
                 sel.append(int(cols[0]))
     return np.array(sel)
+
+
+def halo_selection_weights(mtng, sel=None):
+    """Upweighting fractions h_frac of the sparse MTNG halo selection.
+
+    For each (legacy) mass bin, the fraction of all MTNG halos that made it
+    into the selection -- used to upweight sparse zoom statistics to the
+    volume-complete MTNG ones.
+
+    Parameters
+    ----------
+    mtng : bacco.Simulation
+        The loaded parent box (see load_mtng).
+    sel : array_like of int, optional
+        Selection FoF indices (default: load_halo_selection('hydro')).
+
+    Returns
+    -------
+    (len(sel),) float array
+        One entry per selection entry (mass bins: log-spaced pieces from
+        11.0 to 15.01, as in the legacy scripts).
+    """
+    if sel is None:
+        sel = load_halo_selection("hydro")
+    m200b = np.log10(1e10 * mtng.fof['halo_m200b'])
+    mbins = np.concatenate(
+        (np.arange(11, 11.5, 0.0025),
+         np.arange(11.5, 12.5, 0.005),
+         np.arange(12.5, 13.5, 0.025),
+         np.arange(13.5, 15.01, 0.125))
+    )
+    h_frac = np.zeros(len(sel))
+    for m in range(len(mbins)-1):
+        h_frac[m] = np.where(( m200b[sel]>=mbins[m]) & ( m200b[sel]<mbins[m+1]))[0].shape[0] / \
+                 np.where(( m200b>=mbins[m]) & ( m200b<mbins[m+1]))[0].shape[0]
+    return h_frac

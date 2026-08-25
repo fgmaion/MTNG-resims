@@ -1,11 +1,13 @@
 import numpy as np
-import bacco
 
 import halotools.mock_observables as ht
 
+import os
 import sys
-sys.path.append("/cosmos_storage/home/fgmaion/MTNG-resims/src")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
 import utils
+import paths
+import loading
 
 object_type = 'groups' # 'clusters' or 'groups'
 
@@ -75,29 +77,24 @@ def get_profiles(zoom, r_bins, ih_list):
 
 name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']
 
-sigma8 = 0.8159 #CHECK ME
-ns     = 0.9667 #CHECK ME
-tau    = 0.0965 #CHECK ME
-
 _snap = 264
-zoom = {}
 
-for i in range(len(name_list)):
-    base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/"+name_list[i]+"/hydro_output/"
-    zoom[name_list[i]] = bacco.Simulation(basedir=base, halo_file="groups_{:03d}/fof_subhalo_tab_{:03d}".format(_snap,_snap), dm_file="snapdir_{:03d}/snapshot_{:03d}".format(_snap,_snap),\
-			    sim_format='TNG500', fixedPk=True, use_orphans=False,\
-                            tau=tau, ns=ns, sigma8=sigma8, use_ids=False, tree_file="groups_{:03d}/subhalo_prog_{:03d}".format(_snap,_snap), numpart=4320**3)
+zoom = loading.load_all_zooms(
+    name_list, snap=_snap, use_ids=False, numpart=4320**3,
+    tree_file="groups_{0:03d}/subhalo_prog_{0:03d}".format(_snap))
 
 ### Load the Halo Selection ###
 xmatch = {}
-for i in range(len(name_list)):
-    xmatch[name_list[i]] = utils.cross_match(zoom[name_list[i]], snap=264, name=name_list[i])
+for name in name_list:
+    xmatch[name] = utils.cross_match(zoom[name], snap=264, name=name)
 
 ### Get those profiles
-for i in range(len(name_list)):
-    r_dic, rho_dic = get_profiles(zoom[name_list[i]], r_bins=np.logspace(-2, np.log10(3), 15), ih_list=xmatch[name_list[i]]['ind'])
+outdir = os.path.join(paths.RESULTS_DIR, "profiles")
+os.makedirs(outdir, exist_ok=True)
+for name in name_list:
+    r_dic, rho_dic = get_profiles(zoom[name], r_bins=np.logspace(-2, np.log10(3), 15), ih_list=xmatch[name]['ind'])
 
     if object_type == 'clusters':
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/results/profiles/prof_clusters_{}.npy".format(name_list[i]), {'r':r_dic, 'rho':rho_dic})
+        np.save(os.path.join(outdir, "prof_clusters_{}.npy".format(name)), {'r':r_dic, 'rho':rho_dic})
     elif object_type == 'groups':
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/results/profiles/prof_groups_{}.npy".format(name_list[i]), {'r':r_dic, 'rho':rho_dic})
+        np.save(os.path.join(outdir, "prof_groups_{}.npy".format(name)), {'r':r_dic, 'rho':rho_dic})

@@ -6,37 +6,24 @@ import copy
 import h5py
 import matplotlib
 
+import os
 import sys
-sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/src")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
 import utils
+import paths
+import loading
 
 draws = 100
 
-basedir = "/cosmos_storage/simulations/TNG_Family/MTNG/DM-Gadget4/MTNG-L500-1080-A/"
-
 resolution_level = 1
 
-sigma8 = 0.8159 #CHECK ME
-ns     = 0.9667 #CHECK ME
-tau    = 0.0965 #CHECK ME
-numpart = int(1080**3)
-
-# Load Gravity-Only version of MTNG
-mtng_dm = bacco.Simulation(basedir=basedir, dm_file="snapdir_264/snapshot_264", halo_file="groups_264/fof_subhalo_tab_264",\
-			sim_format='gadget4_hdf5', fixedPk=True, sigma8=sigma8,\
-		        tau=tau, ns=ns, numpart=numpart, use_orphans=False, use_ids=False)
+# Load Gravity-Only version of MTNG (kept from the legacy script; note the
+# loaded object was never used downstream there either)
+mtng_dm = loading.load_mtng(dm=True)
 
 # Load Lite snapshot of the MTNG
 snap = 264
-numpart = int(4320**3/64)
-
-adr = "/cosmos_storage/simulations/TNG_Family/MTNG/"
-
-sim_format = 'TNG500'
-mtng = bacco.Simulation(verbose=False,basedir=adr, halo_file='groups_%03d/fof_subhalo_tab_%03d'%(snap,snap),\
-                        dm_file='64/lite_snap_%03d_mod/diluted_snapshot_%03d'%(snap,snap),\
-                        tau=tau, ns=ns, sigma8=sigma8, numpart=numpart, sim_format=sim_format,\
-                        use_orphans=False, total_snapshots=265, use_ids=False)
+mtng = loading.load_mtng_lite(snap=snap)
 
 # Start the Halo-Selection framework
 hydro_split = utils.split_halos(mtng)
@@ -70,4 +57,6 @@ for i in range(draws):
     ens_fgas[i] = temp['f_gas'][i]
     ens_m500[i] = temp['m500c'][i]
 
-np.save("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_draws/fgas_draws{:d}_nbins{:d}.npy".format(draws, nbins), {'m500':ens_m500, 'ens_fgas':ens_fgas})
+outdir = os.path.join(paths.RESULTS_DIR, "fgas", "fgas_draws")
+os.makedirs(outdir, exist_ok=True)
+np.save(os.path.join(outdir, "fgas_draws{:d}_nbins{:d}.npy".format(draws, nbins)), {'m500':ens_m500, 'ens_fgas':ens_fgas})

@@ -155,23 +155,184 @@ removal planned for Phase 4).
 
 ## Known issues to fix in later phases
 
-- `src/utils.py` has uncommitted WIP: broken `split_halos.__init__` default-arg
-  crash (`None + ""` → TypeError) and broken module-level `get_parameters`
-  (`self.zoom_base` at module scope). Phase 2/3 fixes, keeping old names as
-  deprecated wrappers (notebook compatibility is a hard requirement).
-- Duplicates to merge in Phase 3: `cross_match`/`large_halo_cross_match`,
-  `get_mstar_30kpc`/`get_mstar_30kpc_general`, `q_pos` (3 copies).
+- ~~`src/utils.py` WIP bugs~~ — RESOLVED: `split_halos.__init__` and
+  `get_parameters` fixed (Phase 2/3); `get_zoom_smf` and
+  `large_halo_cross_match` `self` bugs fixed (Phase 3).
+- ~~Duplicates~~ — RESOLVED in Phase 3: `cross_match` family via
+  `_cross_match_mtng_impl`; `get_mstar_30kpc` family via `_mstar_within`;
+  `q_pos` unified (3 copies → 1 canonical).
 - ~12 copy-pasted cosmology + `bacco.Simulation` boilerplate blocks in
   `scripts/` → Phase 4 replaces with `src/loading.py` helpers; script file
   names must stay (cluster jobs depend on them).
 
 ## Next step
 
-Phase 2 — DONE (see Phase 2 log below). Next is Phase 3 = utils.py internals
-(paths imports + dedup + docstrings; fix `split_halos.__init__` default-arg
-crash and `get_zoom_smf`'s `self` bug), Phase 4 = scripts + dead-file
-removal, Phase 5 = .gitignore/nbstripout hygiene, Phase 6 = README rewrite
-(paper/public release) + LICENSE (user to pick).
+Phase 5 — DONE (see Phase 5 log below). Next is Phase 6 = README rewrite
+(paper/public release) + LICENSE (user to pick). After that, remaining
+niceties: `halo_selection/` currently appears in .gitignore although the two
+selection .txt files are tracked — clarify intent before public release.
+
+---
+
+# Phase 5 log (2026-08-24) — repo hygiene
+
+## Done
+
+- `.gitignore`: recursive `__pycache__/`, `*.py[cod]`, and
+  `**/.ipynb_checkpoints/`; dropped redundant `/results/fgas` and
+  `best_models_k10_nbins10/*` sub-entries; everything else unchanged.
+  Verified: nothing tracked under results/gp_train_results/mcmc_chains/
+  cross-match.
+- Tooling: new venv `~/venvs/strip_tools` (py3.11) with nbstripout 0.9.1 —
+  touches neither jupyter_gpu nor .bacco2_venv.
+- Bulk-stripped rendered outputs from all 58 tracked notebooks:
+  75.9 MB → 1.07 MB on disk. Verified per notebook: JSON parses, cell count
+  identical to HEAD, zero remaining outputs; spot-diff confirmed changes are
+  only outputs/execution_count/media blobs.
+- Ongoing prevention: tracked `.gitattributes` (`*.ipynb filter=nbstripout`
+  + zpln + diff driver) and `nbstripout --install` ran in this repo (local
+  `.git/config` filter points at `~/venvs/strip_tools`). Contributors on
+  another checkout still need to `nbstripout --install` locally (call this
+  out in the Phase-6 README).
+- Nothing committed by the agent; history untouched (no rewrites).
+
+Note: after `--install`, `git diff` on notebooks passes through the clean
+filter, so output-only changes will no longer show in diffs — that is the
+point, but be aware when reviewing.
+
+---
+
+# Phase 4 log (2026-08-24) — scripts ported, dead files removed
+
+Branch `refactor-portability`, no commits by the agent (working tree only).
+
+## Done
+
+- `loading.py`: +`halo_selection_weights(mtng, sel=None)` (the 7x-duplicated
+  h_frac block) and +`load_mtng_lite(snap)` (uncertainty scripts' diluted
+  variant). baseline regen records both.
+- All 22 scripts ported onto paths/loading with a uniform relative
+  bootstraps: `sys.path.insert(0, <repo-relative src>)` via `__file__`
+  (scripts/ root = one `..`; subdirs = two). Script file NAMES unchanged.
+  - measure/{S_SF...}: 8 files — loader calls replace the bacco.Simulation
+    boilerplate, halo-sel unified to the repo copy (verified identical),
+    h_frac via halo_selection_weights, results via paths.RESULTS_DIR.
+    compute_profiles keeps its variants via overrides
+    (use_ids=False, numpart=4320**3, tree_file). measure_smf_high_z keeps
+    its tree_file/use_ids=False variant + treedata lookup now via
+    paths.zoom_output_dir.
+  - scripts/cross_match.py + large_halo_cross_match.py: by-name loading
+    RESTORED (per user decision; NAMES list + MTNG_RUNS env override, e.g.
+    MTNG_RUNS="LH_3,fiducial").
+  - scripts/uncertainty/{measure_smf,measure_fgas}.py: dm=True + lite
+    loaders; note the DM box load is kept though the object was never used
+    downstream (faithful port).
+  - scripts/train/*.py (9): 60-line param-parse + local pars/mean_std ->
+    get_lh_design()/pars/mean_std_without_zeros; results & GP model dirs via
+    paths; observables/error models/restarts per script preserved verbatim.
+    `import utils` dropped where it became unused.
+  - scripts/cross-validation (4): same treatment; GP_models import kept via
+    relative scripts/train insert; model save/load path built from
+    __file__ (gitignored best_models_k*_nbins* dirs as before).
+  - scripts/mcmc_chain.py: design['mean'/'sigma'] feed param_means/
+    param_stds/prepare_theta; GSMF via paths.REPO_ROOT/data/; models via
+    GP_MODELS_DIR; chains via MCMC_CHAINS_DIR (+makedirs).
+- Dead files REMOVED: src/{get_limits,read_tree,merger_tree,test_data_type}.c
+  + src/mytest.py. Also removed stale cached bytecode incl. the *tracked*
+  scripts/train/__pycache__/GP_models.cpython-39.pyc (shows as D in git;
+  Phase 5 should ignore __pycache__ recursively).
+- utils.py DISCOVERED-FIX: `split_halos.halo_smf_draws` still built
+  `self.zoom_base+"/{name}/hydro_output/"` directly (legacy layout) — found
+  via the e2e measure run, now uses paths.zoom_output_dir(name). This was
+  the last hardcoded layout in src/.
+
+## Verified
+
+- `python -m py_compile` over all edited scripts: OK.
+- grep: zero remaining /cosmos_storage|/lscratch|/scratch in scripts/
+  (outside comments).
+- sbatch e2e on this machine:
+  - scripts/cross_match.py (MTNG_RUNS=fiducial): fresh compute ==
+    ceph cache bit-for-bit (ind equal, d maxdiff 0.0).
+  - scripts/measure/measure_SMF_fgas.py (bestfit_run): full pipeline ran;
+    produced results/smf|fgas bestfit_run npy; values sane
+    (SMF 1.4e-6..1.1e-2 /Mpc^3/dex; fgas 0.022..0.137).
+  - tests/test_loading.py real-data layer incl. halo_selection_weights
+    (452 fractions, all in [0,1]) — PASS (both load_mtng variants too).
+- suites: smoke_test PASS py3.6 + venv; test_loading PASS py3.6 + venv.
+
+## NOT verifiable here (flagged for next cluster/data-available run)
+
+- Full LH_0..29 loops (zoom outputs absent on this machine).
+- train/cv/mcmc execution (no results npy on this machine AND gpytorch/torch
+  only in venv (torch yes, gpytorch NO) -> install gpytorch into
+  .bacco2_venv or use another env before rerunning those).
+- measure_smf_high_z / compute_profiles / uncertainty scripts: runnable
+  where tree/lite/DM data are complete.
+
+---
+
+# Phase 3 log (2026-08-24) — utils.py internals
+
+Branch `refactor-portability`, no commits (working tree only). Plan
+decisions by user: read_central_xmatch stale → removed; q_pos unified on
+safe flavor; cross_match_zooms dead → removed.
+
+## Done
+
+- `paths.py`: +`BIAS_DIR` (MTNG_BIAS_DIR), `MIMIC_DM_BASE`
+  (MTNG_MIMIC_DM_BASE; genuine legacy name 'MTNG-mimic' on scratch),
+  `CAMELS_BASE` (CAMELS_BASE env).
+- `split_halos.__init__`: defaults paths.MTNG_BASE / paths.RESIMS_BASE,
+  isdir as boolean + raise outside try (None+"" TypeError bug gone);
+  `_FIDUCIAL_COSMO` now aliases `paths.COSMO`.
+- `_load_sim_at_snap` → delegates to loading.load_zoom(use_ids=False,
+  tree_file=...).
+- `get_zoom_smf`: self.mtng_base bug + hardcoded halo-sel fixed via
+  loading loaders (function was previously un-runnable).
+- `cross_match`/`large_halo_cross_match` → shared private
+  `_cross_match_mtng_impl` (frozen public signatures). large_'s
+  `self.mtng_base` NameError gone. Cache dir unified to
+  paths.CROSSMATCH_DIR (read+write; old read-from-halo_selection/,
+  write-to-cross-match/ asymmetry dropped; `resims_base` still honored with
+  both its subdirs when passed). Saves now makedirs(exist_ok=True).
+- `cross_match_zooms`: REMOVED (always crashed: metric called with 8/9
+  args; unused anywhere).
+- `read_central_xmatch`: REMOVED (stale /lscratch/kwalsen path).
+- `q_pos`: single canonical implementation in utils (deepcopy + %BoxSize
+  wrap = old mtt flavor). mtt.q_pos delegates; split_halos.q_pos method
+  delegates + keeps its corr_fac x-shift. Deliberate behavior change vs old
+  utils.q_pos: input no longer mutated; mtng=True outputs wrapped.
+- `get_mstar_30kpc` family → shared private `_mstar_within(...,
+  aperture=)`; comoving (legacy get_mstar_30kpc) vs physical (_general)
+  semantics frozen bit-identically (verified below).
+- `pars`: dead first def removed (was broken at runtime); surviving
+  pars(i, mass) delegates to loading.pars (no deprecation spam).
+- `get_bpo`/`camels_get_LH_pars` hardcoded paths → paths.
+- Numpy-style docstrings: all public symbols now documented (was missing:
+  __init__, total_smf, rhalf_m2half, sSFR_mstar, smhm_ratio, bh_mstar,
+  get_bpo, read_cpu, dict2d_sum, camels_sSFR, camels_get_LH_pars, metric,
+  get_zoom_smf, get_mtng_bhmf, redshift_from_snap).
+
+## Verification (all PASS)
+
+- Parity harness (/tmp, seeded, record-before/check-after on fiducial zoom):
+  bit-identical outputs for q_pos plain flavors, split_halos.q_pos method,
+  get_mstar_30kpc{,_general,_vec} at z=0/1, get_mstar_2halfrad_vec;
+  unified-safe cases verified against their intended new expectations.
+- cross_match cache-read path (ceph resims_info/cross-match): identical.
+- cross_match fresh recompute (sbatch, MTNG hydro + fiducial zoom): matches
+  the DIPC-produced cache bit-for-bit (ind equal, d maxdiff 0.0).
+- tests/smoke_test.py: PASS on py3.6 (tier-2 skip) and on venv py3.11
+  (tier-2 real PASS). tests/test_loading.py: PASS both interpreters (real
+  layer incl. zoom loads).
+- tests/api_baseline.json regenerated: records the 2 removals + new private
+  helpers (_cross_match_mtng_impl, _mstar_within) + unchanged signatures.
+
+## Notes
+
+- scripts/ still contain the copy-pasted loading boilerplate — Phase 4.
+- gpytorch still missing from .bacco2_venv (needed for scripts/train).
 
 ---
 

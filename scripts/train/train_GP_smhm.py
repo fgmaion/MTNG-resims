@@ -5,72 +5,25 @@ import os
 import copy
 from GP_models import SMHM_Model
 
-wind_en_or      = []
-wind_vel_or     = []
-rho_rec_or      = []
-sf_ts_or        = []
-ef_kin_or       = []
-ef_high_or      = []
-f_re_or         = []
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+import paths
+import loading
+
+# Subgrid parameters of the 31 runs, standardized (legacy column order)
+wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re = \
+    tuple(loading.get_lh_design()['design'][:, j] for j in range(7))
+
+pars = loading.pars
 
 name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']# + ['bf_sim'] 
-
-for i in range(len(name_list)):
-    if i<30:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_{:d}.txt".format(i)
-    if i==30:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro.txt"
-    if i==31:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_bf.txt"
-
-
-    with open(filename, 'r') as f:
-        for line in f.readlines():
-            if len(line.split())!=0:
-                if line.split()[0] == 'WindEnergyIn1e51erg':
-                    wind_en_or.append(float(line.split()[1]))
-                if line.split()[0] == 'VariableWindVelFactor':
-                    wind_vel_or.append(float(line.split()[1]))
-                if line.split()[0] == 'WindFreeTravelDensFac':
-                    rho_rec_or.append(float(line.split()[1]))
-                if line.split()[0] == 'MaxSfrTimescale':
-                    sf_ts_or.append(float(line.split()[1]))
-                if line.split()[0] == 'RadioFeedbackFactor':
-                    ef_kin_or.append(float(line.split()[1]))
-                if line.split()[0] == 'BlackHoleFeedbackFactor':
-                    ef_high_or.append(float(line.split()[1]))
-                if line.split()[0] == 'RadioFeedbackReiorientationFactor':
-                    f_re_or.append(float(line.split()[1]))
-        
-rho_rec_or = np.log10(rho_rec_or)
-ef_kin_or  = np.log10(ef_kin_or)
-
-wind_en   = (np.asarray(wind_en_or) - np.mean(wind_en_or)) / np.std(wind_en_or)
-wind_vel  = (np.asarray(wind_vel_or) - np.mean(wind_vel_or)) / np.std(wind_vel_or)
-rho_rec   = (np.asarray(rho_rec_or) - np.mean(rho_rec_or)) / np.std(rho_rec_or)
-sf_ts     = (np.asarray(sf_ts_or) - np.mean(sf_ts_or)) / np.std(sf_ts_or)
-ef_kin    = (np.asarray(ef_kin_or) - np.mean(ef_kin_or)) / np.std(ef_kin_or)
-ef_high   = (np.asarray(ef_high_or) - np.mean(ef_high_or)) / np.std(ef_high_or)
-f_re      = (np.asarray(f_re_or) - np.mean(f_re_or)) / np.std(f_re_or)
-
-def pars(i, m2half):
-
-    arr = np.vstack( ( m2half, np.ones(len(m2half)) * wind_en[i],\
-                        np.ones(len(m2half)) * wind_vel[i],\
-                        np.ones(len(m2half)) * rho_rec[i],\
-                        np.ones(len(m2half)) * sf_ts[i],\
-                        np.ones(len(m2half)) * ef_kin[i],\
-                        np.ones(len(m2half)) * ef_high[i],\
-                        np.ones(len(m2half)) * f_re[i])).T
-
-    return arr
 
 # Load Stellar-Mass to Halo-Mass Relation
 Nbins_smhm = 10
 
 zoom_smhm = {}
 for i in range(len(name_list)):
-    zoom_smhm[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smhm_rel/smhm_relation_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smhm), allow_pickle=True)[0]
+    zoom_smhm[name_list[i]] = np.load(os.path.join(paths.RESULTS_DIR, "smhm_rel", "smhm_relation_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smhm)), allow_pickle=True)[0]
 
 # Filter NaNs
 for i in range(len(name_list)):
@@ -158,13 +111,12 @@ for r in range(n_restarts):
 model.load_state_dict(best_state['model'])
 likelihood.load_state_dict(best_state['likelihood'])
 
-save_path = "/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/"
+save_path = paths.GP_MODELS_DIR
+os.makedirs(save_path, exist_ok=True)
 
-torch.save(model, save_path+"full_model_smhm.pth")
-torch.save(likelihood, save_path+"full_likelihood_smhm.pth")
+torch.save(model, os.path.join(save_path, "full_model_smhm.pth"))
+torch.save(likelihood, os.path.join(save_path, "full_likelihood_smhm.pth"))
 
 print(model.covar_module.base_kernel.lengthscale)
 print(model.covar_module.outputscale)
 print(torch.sqrt(model.likelihood.noise_covar.noise))
-
-

@@ -9,20 +9,13 @@ import gpytorch
 import emcee
 import corner
 
-def mean_std_without_zeros(array):
-    ndraws, nbins = array.shape
-    mean_values = []
-    std_values = []
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_script_dir, "..", "src"))
+import paths
+import loading
+from loading import mean_std_without_zeros
 
-    for i in range(nbins):
-        non_zero_values = array[:, i][array[:, i] != 0]
-        mean_values.append(np.mean(non_zero_values))
-        std_values.append(np.std(non_zero_values))
-
-    return np.array(mean_values), np.array(std_values)
-
-import sys
-sys.path.insert(0, "/cosmos_storage/home/fgmaion/MTNG-resims/scripts/train")
+sys.path.insert(0, os.path.join(_script_dir, "train"))
 from GP_models import SMF_Model, fgas_Model
 
 ###########################################
@@ -59,17 +52,17 @@ elif dataset=='kugel':
    fgas = np.asarray([0.083, 0.094, 0.105, 0.115, 0.130])
    err_fgas = np.asarray([0.002, 0.003, 0.005, 0.008, 0.002])
 
-gsmf = np.loadtxt('/cosmos_storage/home/fgmaion/MTNG-resims/data/GAMA_SDSS_stitched_GSMF_h0p6774.csv',
+gsmf = np.loadtxt(os.path.join(paths.REPO_ROOT, 'data', 'GAMA_SDSS_stitched_GSMF_h0p6774.csv'),
                   delimiter=',', comments='#', skiprows=33,
                   usecols=(0, 1, 2))
 
 # Simulation error on fgas
-fgas_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/fgas/fgas_draws/fgas_draws100_nbins10.npy", allow_pickle=True).item()
+fgas_draws = np.load(os.path.join(paths.RESULTS_DIR, "fgas", "fgas_draws", "fgas_draws100_nbins10.npy"), allow_pickle=True).item()
 sim_fgas, err_sim_fgas = mean_std_without_zeros(fgas_draws['ens_fgas'])
 sim_m500c, _ = mean_std_without_zeros(fgas_draws['m500'])
 
 # Simulation error on the SMF
-smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins10.npy", allow_pickle=True).item()
+smf_draws = np.load(os.path.join(paths.RESULTS_DIR, "smf", "smf_draws", "smf_draws100_nbins10.npy"), allow_pickle=True).item()
 
 sim_smf, err_sim_smf = mean_std_without_zeros(smf_draws['ens_smf'])
 err_sim_log_smf = err_sim_smf / sim_smf / np.log(10)
@@ -87,62 +80,23 @@ def model_gsmf(gsmf, b_star, b_cv):
 ################## Load Parameters #######################
 ##########################################################
 
-wind_en_or      = []
-wind_vel_or     = []
-rho_rec_or      = []
-sf_ts_or        = []
-ef_kin_or       = []
-ef_high_or      = []
-f_re_or         = []
-
-for i in range(31):
-    if i<30:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_{:d}.txt".format(i)
-    else:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro.txt"
-
-    with open(filename, 'r') as f:
-        for line in f.readlines():
-            if len(line.split())!=0:
-                if line.split()[0] == 'WindEnergyIn1e51erg':
-                    wind_en_or.append(float(line.split()[1]))
-                if line.split()[0] == 'VariableWindVelFactor':
-                    wind_vel_or.append(float(line.split()[1]))
-                if line.split()[0] == 'WindFreeTravelDensFac':
-                    rho_rec_or.append(float(line.split()[1]))
-                if line.split()[0] == 'MaxSfrTimescale':
-                    sf_ts_or.append(float(line.split()[1]))
-                if line.split()[0] == 'RadioFeedbackFactor':
-                    ef_kin_or.append(float(line.split()[1]))
-                if line.split()[0] == 'BlackHoleFeedbackFactor':
-                    ef_high_or.append(float(line.split()[1]))
-                if line.split()[0] == 'RadioFeedbackReiorientationFactor':
-                    f_re_or.append(float(line.split()[1]))
-        
-rho_rec_or = np.log10(rho_rec_or)
-ef_kin_or  = np.log10(ef_kin_or)
-
-wind_en   = (np.asarray(wind_en_or) - np.mean(wind_en_or)) / np.std(wind_en_or)
-wind_vel  = (np.asarray(wind_vel_or) - np.mean(wind_vel_or)) / np.std(wind_vel_or)
-rho_rec   = (np.asarray(rho_rec_or) - np.mean(rho_rec_or)) / np.std(rho_rec_or)
-sf_ts     = (np.asarray(sf_ts_or) - np.mean(sf_ts_or)) / np.std(sf_ts_or)
-ef_kin    = (np.asarray(ef_kin_or) - np.mean(ef_kin_or)) / np.std(ef_kin_or)
-ef_high   = (np.asarray(ef_high_or) - np.mean(ef_high_or)) / np.std(ef_high_or)
-f_re      = (np.asarray(f_re_or) - np.mean(f_re_or)) / np.std(f_re_or)
+# Subgrid parameters of the 31 runs: raw (log10 on rho_rec/ef_kin before
+# statistics) and standardized, in the legacy column order.
+design = loading.get_lh_design()
+(wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re) = \
+    tuple(design['design'][:, j] for j in range(7))
 
 # ---------- 3. Build likelihoods ----------
 
 if mcmc_type in ['smf', 'fgas', 'joint']:
-    model_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_smf.pth")
-    model_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_model_fgas.pth")
+    model_smf = torch.load(os.path.join(paths.GP_MODELS_DIR, "full_model_smf.pth"))
+    model_fgas = torch.load(os.path.join(paths.GP_MODELS_DIR, "full_model_fgas.pth"))
 
-    likelihood_smf = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_smf.pth")
-    likelihood_fgas = torch.load("/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/full_likelihood_fgas.pth")
+    likelihood_smf = torch.load(os.path.join(paths.GP_MODELS_DIR, "full_likelihood_smf.pth"))
+    likelihood_fgas = torch.load(os.path.join(paths.GP_MODELS_DIR, "full_likelihood_fgas.pth"))
 
-param_means = np.array([np.mean(wind_en_or), np.mean(wind_vel_or), np.mean(rho_rec_or), 
-                        np.mean(sf_ts_or), np.mean(ef_kin_or), np.mean(ef_high_or), np.mean(f_re_or)])
-param_stds  = np.array([np.std(wind_en_or), np.std(wind_vel_or), np.std(rho_rec_or), 
-                        np.std(sf_ts_or), np.std(ef_kin_or), np.std(ef_high_or), np.std(f_re_or)])
+param_means = design['mean']
+param_stds  = design['sigma']
 
 # Lower bounds defined by the simulation campaign itself
 if par_range == 'regular':
@@ -155,20 +109,20 @@ if par_range == 'extended':
 
 if par_range == 'super_extended':
     lower_bound = np.asarray([0.0,  3.7,  np.log10(0.005/10), 0.001135, np.log10(0.001),   0.05,   10, -np.inf, -np.inf])
-    upper_bound = np.asarray([14.4, 20,   np.log10(0.5*100),   0.00454, np.log10(2*100),  0.2,  80, np.inf, np.inf])
+    upper_bound = np.asarray([14.4, 14.8, np.log10(0.5*100),   0.00454, np.log10(2*100),  0.2,  80, np.inf, np.inf])
 
 
 def prepare_theta(theta):
 
     theta_std = np.copy(theta)
     
-    theta_std[0]  = (theta_std[0] - np.mean(wind_en_or)) / np.std(wind_en_or)
-    theta_std[1]  = (theta_std[1] - np.mean(wind_vel_or)) / np.std(wind_vel_or)
-    theta_std[2]  = (theta_std[2] - np.mean(rho_rec_or)) / np.std(rho_rec_or)
-    theta_std[3]  = (theta_std[3] - np.mean(sf_ts_or)) / np.std(sf_ts_or)
-    theta_std[4]  = (theta_std[4] - np.mean(ef_kin_or)) / np.std(ef_kin_or)
-    theta_std[5]  = (theta_std[5] - np.mean(ef_high_or)) / np.std(ef_high_or)
-    theta_std[6]  = (theta_std[6] - np.mean(f_re_or)) / np.std(f_re_or)
+    theta_std[0]  = (theta_std[0] - param_means[0]) / param_stds[0]
+    theta_std[1]  = (theta_std[1] - param_means[1]) / param_stds[1]
+    theta_std[2]  = (theta_std[2] - param_means[2]) / param_stds[2]
+    theta_std[3]  = (theta_std[3] - param_means[3]) / param_stds[3]
+    theta_std[4]  = (theta_std[4] - param_means[4]) / param_stds[4]
+    theta_std[5]  = (theta_std[5] - param_means[5]) / param_stds[5]
+    theta_std[6]  = (theta_std[6] - param_means[6]) / param_stds[6]
 
     return theta_std
 
@@ -328,8 +282,8 @@ def run_MCMC(w_smf, w_fgas):
 
     # Initialize walkers within the physical bounds (lower_bound, upper_bound)
     # We start them in a small ball around a reasonable central guess
-    p0_start = np.asarray([np.mean(wind_en_or), np.mean(wind_vel_or), np.mean(rho_rec_or), np.mean(sf_ts_or),\
-                        np.mean(ef_kin_or), np.mean(ef_high_or), np.mean(f_re_or), 0, 1])
+    p0_start = np.asarray([param_means[0], param_means[1], param_means[2], param_means[3],\
+                        param_means[4], param_means[5], param_means[6], 0, 1])
     p0 = p0_start + 1e-4 * np.random.randn(nwalkers, ndim)
 
     # Ensure initial positions are actually within bounds
@@ -338,10 +292,11 @@ def run_MCMC(w_smf, w_fgas):
     # Define where to save the results of this chain
     # Set up the backend
     # Don't forget to clear it in case the file already exists
+    os.makedirs(paths.MCMC_CHAINS_DIR, exist_ok=True)
     if mcmc_type in ['smf', 'smf-BF']:
-        filename = "/cosmos_storage/home/fgmaion/MTNG-resims/mcmc_chains/"+mcmc_type+"_"+par_range+"_chain.h5"
+        filename = os.path.join(paths.MCMC_CHAINS_DIR, mcmc_type+"_"+par_range+"_chain.h5")
     elif mcmc_type in ['fgas', 'fgas-BF', 'joint', 'joint-BF']:
-        filename = "/cosmos_storage/home/fgmaion/MTNG-resims/mcmc_chains/"+mcmc_type+"_"+par_range+"_"+dataset+"_chain.h5"
+        filename = os.path.join(paths.MCMC_CHAINS_DIR, mcmc_type+"_"+par_range+"_"+dataset+"_chain.h5")
     backend = emcee.backends.HDFBackend(filename)
     if reset:
         backend.reset(nwalkers, ndim) # If you want to restart from your current progress, comment this line

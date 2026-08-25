@@ -274,6 +274,10 @@ def layer2_real_data():
             m = loading.load_mtng(dm=False)
             print("  ok  : load_mtng(dm=False) loaded ({} halos)"
                   .format(len(m.fof["halo_pos"])))
+            w = loading.halo_selection_weights(m)
+            check(len(w) == 452 and np.all((w >= 0) & (w <= 1)),
+                  "halo_selection_weights: 452 fractions in [0, 1] "
+                  "({} nonzero)".format(int(np.count_nonzero(w))))
         except Exception as e:  # best-effort: data subsets may be partial
             print("  WARN: load_mtng(dm=False) failed: {}".format(e))
     else:

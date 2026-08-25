@@ -12,26 +12,14 @@ except ImportError:  # Python 3.x
     import pickle
 
 def q_pos(mbID, npart=4320, BoxSize=500, mtng=False, idstart=0):
-    
-    import copy
+    """Decode Lagrangian grid positions from particle/halo IDs.
 
-    _mbID = copy.deepcopy(mbID)
-
-    if mtng:
-        _mbID[np.where(mbID>=1)] -= 20155392000
-        _mbID[np.where(mbID<1)] += 80621568000
-
-    q = np.zeros(_mbID.shape + (3,), dtype=np.float32)
-
-    q[..., 0] = (_mbID - idstart) // npart**2
-    q[..., 1] = ( (_mbID - idstart) // npart) % npart
-    q[..., 2] = (_mbID - idstart) % npart
-
-    # normalize correctly
-    q *= (BoxSize / npart)
-    q = q % BoxSize
-
-    return q
+    Phase 3: delegates to utils.q_pos, the canonical safe implementation
+    (copy of the input, coordinates wrapped with % BoxSize).
+    """
+    import utils
+    return utils.q_pos(mbID, npart=npart, BoxSize=BoxSize, mtng=mtng,
+                       idstart=idstart)
 
 from collections import defaultdict
 

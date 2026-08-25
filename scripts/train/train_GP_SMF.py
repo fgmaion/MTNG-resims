@@ -5,84 +5,26 @@ import os
 import copy
 from GP_models import SMF_Model
 
-def mean_std_without_zeros(array):
-    ndraws, nbins = array.shape
-    mean_values = []
-    std_values = []
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+import paths
+import loading
+from loading import mean_std_without_zeros
 
-    for i in range(nbins):
-        non_zero_values = array[:, i][array[:, i] != 0]
-        mean_values.append(np.mean(non_zero_values))
-        std_values.append(np.std(non_zero_values))
+# Subgrid parameters of the 31 runs, standardized (legacy column order)
+wind_en, wind_vel, rho_rec, sf_ts, ef_kin, ef_high, f_re = \
+    tuple(loading.get_lh_design()['design'][:, j] for j in range(7))
 
-    return np.array(mean_values), np.array(std_values)
-
-wind_en_or      = []
-wind_vel_or     = []
-rho_rec_or      = []
-sf_ts_or        = []
-ef_kin_or       = []
-ef_high_or      = []
-f_re_or         = []
+pars = loading.pars
 
 name_list = ['LH_{:d}'.format(i) for i in range(30)] + ['fiducial']# + ['bf_sim'] 
-
-for i in range(len(name_list)):
-    if i<30:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_{:d}.txt".format(i)
-    if i==30:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro.txt"
-    if i==31:
-        filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_bf.txt"
-
-
-    with open(filename, 'r') as f:
-        for line in f.readlines():
-            if len(line.split())!=0:
-                if line.split()[0] == 'WindEnergyIn1e51erg':
-                    wind_en_or.append(float(line.split()[1]))
-                if line.split()[0] == 'VariableWindVelFactor':
-                    wind_vel_or.append(float(line.split()[1]))
-                if line.split()[0] == 'WindFreeTravelDensFac':
-                    rho_rec_or.append(float(line.split()[1]))
-                if line.split()[0] == 'MaxSfrTimescale':
-                    sf_ts_or.append(float(line.split()[1]))
-                if line.split()[0] == 'RadioFeedbackFactor':
-                    ef_kin_or.append(float(line.split()[1]))
-                if line.split()[0] == 'BlackHoleFeedbackFactor':
-                    ef_high_or.append(float(line.split()[1]))
-                if line.split()[0] == 'RadioFeedbackReiorientationFactor':
-                    f_re_or.append(float(line.split()[1]))
-        
-rho_rec_or = np.log10(rho_rec_or)
-ef_kin_or  = np.log10(ef_kin_or)
-
-wind_en   = (np.asarray(wind_en_or) - np.mean(wind_en_or)) / np.std(wind_en_or)
-wind_vel  = (np.asarray(wind_vel_or) - np.mean(wind_vel_or)) / np.std(wind_vel_or)
-rho_rec   = (np.asarray(rho_rec_or) - np.mean(rho_rec_or)) / np.std(rho_rec_or)
-sf_ts     = (np.asarray(sf_ts_or) - np.mean(sf_ts_or)) / np.std(sf_ts_or)
-ef_kin    = (np.asarray(ef_kin_or) - np.mean(ef_kin_or)) / np.std(ef_kin_or)
-ef_high   = (np.asarray(ef_high_or) - np.mean(ef_high_or)) / np.std(ef_high_or)
-f_re      = (np.asarray(f_re_or) - np.mean(f_re_or)) / np.std(f_re_or)
-
-def pars(i, mstar):
-
-    arr = np.vstack( ( mstar, np.ones(len(mstar)) * wind_en[i],\
-                        np.ones(len(mstar)) * wind_vel[i],\
-                        np.ones(len(mstar)) * rho_rec[i],\
-                        np.ones(len(mstar)) * sf_ts[i],\
-                        np.ones(len(mstar)) * ef_kin[i],\
-                        np.ones(len(mstar)) * ef_high[i],\
-                        np.ones(len(mstar)) * f_re[i])).T
-
-    return arr
 
 # Load SMF
 Nbins_smf = 15
 
 zoom_smf = {}
 for i in range(len(name_list)):
-    zoom_smf[name_list[i]] = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf), allow_pickle=True)[0]
+    zoom_smf[name_list[i]] = np.load(os.path.join(paths.RESULTS_DIR, "smf", "smf_{}_Nbins{:d}.npy".format(name_list[i], Nbins_smf)), allow_pickle=True)[0]
 
 # Filter NaNs
 for i in range(len(name_list)):
@@ -91,7 +33,7 @@ for i in range(len(name_list)):
     zoom_smf[name_list[i]]['smf'][0] = zoom_smf[name_list[i]]['smf'][0][mask]
     zoom_smf[name_list[i]]['mstar'][0] = zoom_smf[name_list[i]]['mstar'][0][mask]
 
-smf_draws = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/results/smf/smf_draws/smf_draws100_nbins14.npy", allow_pickle=True).item()
+smf_draws = np.load(os.path.join(paths.RESULTS_DIR, "smf", "smf_draws", "smf_draws100_nbins14.npy"), allow_pickle=True).item()
 mean_smf, err_smf = mean_std_without_zeros(smf_draws['ens_smf'])
 err_log_smf = torch.asarray(err_smf / mean_smf / np.log(10), dtype=torch.float)
 
@@ -176,11 +118,11 @@ likelihood.load_state_dict(best_state['likelihood'])
 
 #model.likelihood.second_noise_covar.noise = 0.1**2
 
-save_path = "/cosmos_storage/home/fgmaion/MTNG-resims/gp_train_results/"
+save_path = paths.GP_MODELS_DIR
+os.makedirs(save_path, exist_ok=True)
 
 #torch.save({'model_state_dict':model.state_dict(),
-#            'likelihood_state_dict':likelihood.state_dict()}, save_path + "model_smf")
+#            'likelihood_state_dict':likelihood.state_dict()}, os.path.join(save_path, "model_smf"))
 
-torch.save(model, save_path+"full_model_smf.pth")
-torch.save(likelihood, save_path+"full_likelihood_smf.pth")
-
+torch.save(model, os.path.join(save_path, "full_model_smf.pth"))
+torch.save(likelihood, os.path.join(save_path, "full_likelihood_smf.pth"))
