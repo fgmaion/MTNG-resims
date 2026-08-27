@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "MTNG-resims: analysis code for multi-zoom resimulations of MillenniumTNG halos"
+authors:
+  - family-names: Maion
+    given-names: Francisco
+url: "https://github.com/fgmaion/MTNG-resims"
+license: MIT
+preferred-citation:
+  type: article
+  title: "Evaluating the flexibility of the MillenniumTNG galaxy formation model with multi-zoom re-simulations"
+  authors:
+    - family-names: Maion
+      given-names: Francisco
+    - family-names: Angulo
+      given-names: Raul E.
+    - family-names: Springel
+      given-names: Volker
+    - family-names: Genel
+      given-names: Shy
+    - family-names: Bryan
+      given-names: Greg L.
+  year: 2026
+  journal: "arXiv preprint"
+  identifiers:
+    - type: arxiv
+      value: "2607.13151"
+    - type: doi
+      value: "10.48550/arXiv.2607.13151"

@@ -6,6 +6,9 @@ __pycache__/
 **/.ipynb_checkpoints/
 
 # Repo-root generated outputs
+# Note: /halo_selection is ignored so no ad-hoc cache files get committed, but
+# the two tracked selection lists (*_halo_sel_1pmbin.txt, the 452-halo FoF
+# sample loaded via src/paths.halo_selection_file) are intentionally tracked.
 /images
 /gas_fractions
 /halo_selection

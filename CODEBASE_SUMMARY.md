@@ -1,5 +1,47 @@
 # Codebase Summary (auto-generated notes)
 
+# Phase 6 log (2026-08-27) — public-release docs (README, LICENSE, CITATION)
+
+Branch `refactor-portability`; left UNCOMMITTED per user decision.
+
+## Done
+
+- `README.md` rewritten for the paper/public release: project & paper citation
+  (arXiv:2607.13151, BibTeX block), repo layout table, requirements (verified
+  against actual imports: bacco, numpy/scipy/h5py/matplotlib, torch+gpytorch
+  for train/CV/MCMC, emcee+corner, halotools only for compute_profiles),
+  env-var configuration table (names cross-checked verbatim against
+  src/paths.py, plus MTNG_RUNS for the cross-match scripts), pipeline
+  quickstart (cross-match → measure → train → CV → mcmc_chain.py; honest notes
+  that measure scripts subset via in-file `name_list` and mcmc_chain via
+  in-file `mcmc_type`), test instructions, nbstripout per-checkout setup for
+  contributors, data-availability note, license.
+- `LICENSE`: MIT, Copyright (c) 2024-2026 Francisco Maion & contributors
+  (first repo commit 2024; choice by user; bacco itself is MIT, no constraint).
+- `CITATION.cff`: software entry + preferred-citation = the arXiv paper
+  (GitHub "Cite this repository" widget).
+- `.gitignore`: comment clarifying that /halo_selection is ignored for ad-hoc
+  caches while the two tracked *_halo_sel_1pmbin.txt files are intentional
+  (resolves the flagged pre-release question; no rule changes).
+- CODEBASE_SUMMARY.md kept at root (user decision), this log appended.
+
+## Verification
+
+- env-var names in README matched against `os.environ.get(...)` occurrences in
+  src/paths.py (exact set, incl. MTNG_RUNS/MTNG_DM_TEST_* extras documented
+  where relevant).
+- All README-mentioned repo paths exist; CITATION.cff parses as YAML.
+- Docs-only phase: no code touched, tests not re-run.
+
+## Status of the refactor plan
+
+All six phases done. Remaining user-side actions: review/commit Phase 6,
+merge `refactor-portability` → `master` (or PR), optionally tag a paper-release
+version; install gpytorch into the analysis venv before rerunning train/CV/MCMC;
+full 31-zoom verification still pending on a machine with LH_0..29 outputs.
+
+---
+
 ## Purpose
 
 Analysis code for **zoom-in resimulations of MTNG** (MillenniumTNG) halos, used to
