@@ -2,6 +2,8 @@ import numpy as np
 import bacco
 import h5py
 
+import resims_paths as rp
+
 class split_halos():
 
     def __init__(self, sim):
@@ -85,7 +87,7 @@ class split_halos():
 
     def _load_sim_at_snap(self, snap, name='fiducial'):
         """Load a bacco.Simulation at an arbitrary snapshot."""
-        base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/{}/hydro_output/".format(name)
+        base = rp.MN5_RESIMS + "{}/hydro_output/".format(name)
 
         return bacco.Simulation(
             basedir=base,
@@ -458,7 +460,7 @@ class split_halos():
         nsubs = self.sim.fof['halo_nsubs']
 
         snap = 264 - depth
-        sim_base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/{}/hydro_output/".format(name)
+        sim_base = rp.MN5_RESIMS + "{}/hydro_output/".format(name)
         z = redshift_from_snap(snap, sim_base)
 
         # High-z setup, only when needed
@@ -1006,7 +1008,7 @@ class split_halos():
             import bacco.probabilistic_bias as pb
 
             # MTNG Mimic
-            dir_name_dm = "/scratch/cosmosims/TNG_Family/MTNG-mimic/output/"
+            dir_name_dm = rp.MTNG_MIMIC_SIM
 
             dm_mtng = bacco.Simulation(
                 basedir=dir_name_dm, halo_file="groups_085/fof_subhalo_history_tab_orph_wweight_085",
@@ -1029,10 +1031,10 @@ class split_halos():
 
             bias = pbm.fit_bias(model=IA_model, tracer_q=q, error='qjack4', tracer_properties={'I':S})
             bpo = np.float32(IA_model.bpo)
-            np.save("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
+            np.save(rp.PROB_BIAS_BIASES + "IA_bias_so0_mtng_z{:.2f}".format(z), [{'bias':bias, 'bpo':bpo}])
         
         else:
-            load_bias = np.load("/cosmos_storage/home/fgmaion/prob-bias/MTNG/biases/IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
+            load_bias = np.load(rp.PROB_BIAS_BIASES + "IA_bias_so0_mtng_z{:.2f}.npy".format(z), allow_pickle=True)[0]
             bpo = load_bias['bpo']
 
         return bpo
@@ -1122,18 +1124,18 @@ def cross_match(zoom, snap, name=None):
 
     if name is not None:
         try:
-            load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
+            load_match = np.load(rp.RESIMS_DIR + "halo_selection/cross_match_{}.npy".format(name), allow_pickle=True)[0]
             return load_match
         except:
             pass
 
     # Load MTNG
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
+    mtng = bacco.utils.load_MTNG(adr=rp.MTNG_SIM, snap=snap)
     mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
     mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
 
     # Load halo selection
-    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+    with open(rp.RESIMS_DIR + "halo_selection/hydro_halo_sel_1pmbin.txt") as f:
         final_sel = []
         for line in f.readlines():
             final_sel.append(int(line.split()[0]))
@@ -1170,7 +1172,7 @@ def cross_match(zoom, snap, name=None):
     if name is None:
         return {'ind':xmatch, 'd':dmatch}
     else:
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        np.save(rp.RESIMS_DIR + "cross-match/cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
         return {'ind':xmatch, 'd':dmatch}
 
 
@@ -1198,18 +1200,18 @@ def large_halo_cross_match(zoom, snap, name=None):
 
     if name is not None:
         try:
-            load_match = np.load("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/large_halo_cross_match_{}.npy".format(name), allow_pickle=True)[0]
+            load_match = np.load(rp.RESIMS_DIR + "halo_selection/large_halo_cross_match_{}.npy".format(name), allow_pickle=True)[0]
             return load_match
         except:
             pass
 
     # Load MTNG
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=snap)
+    mtng = bacco.utils.load_MTNG(adr=rp.MTNG_SIM, snap=snap)
     mtng.fof['halo_pos'][:,0] = (mtng.fof['halo_pos'][:,0] - 125) % 500
     mtng.sub['pos'][:,0] = (mtng.sub['pos'][:,0] - 125) % 500
 
     # Load halo selection
-    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+    with open(rp.RESIMS_DIR + "halo_selection/hydro_halo_sel_1pmbin.txt") as f:
         final_sel = []
         for line in f.readlines():
             final_sel.append(int(line.split()[0]))
@@ -1252,7 +1254,7 @@ def large_halo_cross_match(zoom, snap, name=None):
     if name is None:
         return {'ind':xmatch, 'd':dmatch}
     else:
-        np.save("/cosmos_storage/home/fgmaion/MTNG-resims/cross-match/large_halo_cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
+        np.save(rp.RESIMS_DIR + "cross-match/large_halo_cross_match_{}.npy".format(name), [{'ind':xmatch, 'd':dmatch}])
         return {'ind':xmatch, 'd':dmatch}
 
 def cross_match_zooms(zoom1, zoom2):
@@ -1367,24 +1369,24 @@ def camels_stellar_mf(sim_cat, id_name=None, par=None, num=None, nbins=100, base
 
         # catalog name
         if baseline:
-            catalog = '/scratch/fgmaion/CAMELS/1P/1P_0/groups_090.hdf5'
+            catalog = rp.CAMELS_DIR + '1P/1P_0/groups_090.hdf5'
         else:
             assert id_name is not None
             assert par is not None
 
-            catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+            catalog = rp.CAMELS_DIR + '1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
     
     elif sim_cat == 'LH':
         assert num is not None
 
         # catalog name
-        catalog = '/scratch/fgmaion/CAMELS/LH/LH_{:d}'.format(num)+'/groups_090.hdf5'
+        catalog = rp.CAMELS_DIR + 'LH/LH_{:d}'.format(num)+'/groups_090.hdf5'
 
     elif sim_cat == 'CV':
         assert num is not None
 
         # catalog name
-        catalog = '/scratch/fgmaion/CAMELS/CV/CV_{:d}'.format(num)+'/groups_090.hdf5'
+        catalog = rp.CAMELS_DIR + 'CV/CV_{:d}'.format(num)+'/groups_090.hdf5'
 
 
     # value of the scale factor
@@ -1417,7 +1419,7 @@ def camels_gas_frac(id_name, par, nbins=10, hfac=0.6711):
     '''
 
     # catalog name
-    catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+    catalog = rp.CAMELS_DIR + '1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
 
     # value of the scale factor
     scale_factor = 1.0
@@ -1453,7 +1455,7 @@ def camels_sSFR(id_name, par, nbins=20, hfac=0.6711):
 
     bins = np.logspace(8, 13, nbins)
     
-    catalog = '/scratch/fgmaion/CAMELS/1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
+    catalog = rp.CAMELS_DIR + '1P/1P_p{:d}_'.format(par)+id_name+'/groups_090.hdf5'
 
     # value of the scale factor
     scale_factor = 1.0
@@ -1484,7 +1486,7 @@ def camels_sSFR(id_name, par, nbins=20, hfac=0.6711):
 
 def camels_get_LH_pars(num=None):
     # catalog name
-    catalog = '/scratch/fgmaion/CAMELS/LH/LH_{:d}/groups_090.hdf5'.format(num)
+    catalog = rp.CAMELS_DIR + 'LH/LH_{:d}/groups_090.hdf5'.format(num)
 
     # open the catalogue
     f = h5py.File(catalog, 'r')
@@ -1524,7 +1526,7 @@ def read_central_xmatch(sim_name):
     dy = []
     dz = []
 
-    with open("/lscratch/kwalsen/xmatch/264/"+sim_name+"/selection_xmatch_deltas.csv", 'r') as f:
+    with open(rp.KWALSEN_XMATCH + "264/"+sim_name+"/selection_xmatch_deltas.csv", 'r') as f:
         for i, line in enumerate(f.readlines()):
             if i==0:
                 continue
@@ -1572,7 +1574,7 @@ def pars(i, mstar):
 def get_zoom_smf(zoom, snap=264, Nbins=50):
 
     # BE CAREFUL. Right now this works for snap=264, but I am not sure if it would work for other redshifts
-    mtng = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=264)
+    mtng = bacco.utils.load_MTNG(adr=rp.MTNG_SIM, snap=264)
     mtng.fof['halo_pos'][:,0] = ( mtng.fof['halo_pos'][:,0] - 125 ) % 500
     
     xmatch = cross_match(zoom, snap=264)
@@ -1580,7 +1582,7 @@ def get_zoom_smf(zoom, snap=264, Nbins=50):
     m200b = np.log10(1e10 * mtng.fof['halo_m200b'])
     
     # load the halo-selection in the fiducial MTNG
-    with open("/cosmos_storage/home/fgmaion/MTNG-resims/halo_selection/hydro_halo_sel_1pmbin.txt") as f:
+    with open(rp.RESIMS_DIR + "halo_selection/hydro_halo_sel_1pmbin.txt") as f:
         final_sel = []
         for line in f.readlines():
             final_sel.append(int(line.split()[0]))
@@ -1640,9 +1642,9 @@ def get_parameters():
 
     for i in range(31):
         if i<30:
-            filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro_{:d}.txt".format(i)
+            filename = rp.MN5_RESIMS + "param_LH/param_MTNG-hydro_{:d}.txt".format(i)
         else:
-            filename = "/cosmos_storage/simulations/TNG_Family/MN5_resims/param_LH/param_MTNG-hydro.txt"
+            filename = rp.MN5_RESIMS + "param_LH/param_MTNG-hydro.txt"
 
         with open(filename, 'r') as f:
             for line in f.readlines():

@@ -6,6 +6,8 @@ import bacco
 import copy
 import gc
 
+import resims_paths as rp
+
 try:
     import cPickle as pickle
 except ImportError:  # Python 3.x
@@ -73,12 +75,12 @@ class tree:
         self.tree_format = tree_format
 
         if tree_format == 'MTNG':
-            self.TREE_BASE = "/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/"
-            self.sim_base = "/cosmos_storage/simulations/TNG_Family/MTNG/"
-            self.sim_0 = bacco.utils.load_MTNG(adr="/cosmos_storage/simulations/TNG_Family/MTNG/", snap=self.snap_0)
+            self.TREE_BASE = rp.TREE_DATA
+            self.sim_base = rp.MTNG_SIM
+            self.sim_0 = bacco.utils.load_MTNG(adr=rp.MTNG_SIM, snap=self.snap_0)
 
         elif tree_format == 'zoom':
-            self.sim_base = "/cosmos_storage/simulations/TNG_Family/MN5_resims/"+name+"/hydro_output/"
+            self.sim_base = rp.MN5_RESIMS+name+"/hydro_output/"
             self.TREE_BASE = self.sim_base + "treedata/"
             self.sim_0 = sim
 
@@ -219,13 +221,13 @@ class tree:
     def read_tree_opt(self):
         
         if self.tree_format == 'MTNG':
-            self.tree_offsets = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/offsets.bin", dtype=np.int64)
+            self.tree_offsets = np.fromfile(rp.TREE_DATA + "offsets.bin", dtype=np.int64)
             print("Done with offsets")
-            self.sub_mainprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/main_progs.bin", dtype=np.int64)
+            self.sub_mainprog = np.fromfile(rp.TREE_DATA + "main_progs.bin", dtype=np.int64)
             print("Done with Mainprog")
-            self.sub_firstprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/first_progs.bin", dtype=np.int64)
+            self.sub_firstprog = np.fromfile(rp.TREE_DATA + "first_progs.bin", dtype=np.int64)
             print("Done with FirstProg")
-            self.sub_nextprog = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/next_progs.bin", dtype=np.int64)
+            self.sub_nextprog = np.fromfile(rp.TREE_DATA + "next_progs.bin", dtype=np.int64)
             print("Done with SecondaryProg")
 
         elif self.tree_format == 'zoom':
@@ -524,7 +526,7 @@ class tree:
             lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
             # load the mtng-mimic simulation at very early stages
-            dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
+            dir_name_dm = rp.MTNG_MIMIC_SIM
 
             dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
                                 ngenic_phases=True, phase_type=2, fixedPk=True)
@@ -583,7 +585,7 @@ class tree:
             lag_pos = q_pos(self.sub_tree_prop['SubhaloIDMostbound'], mtng=True)
 
             # load the mtng-mimic simulation at very early stages
-            dir_name_dm = "/cosmos_storage/simulations/TNG_Family/MTNG_mimic/output/"
+            dir_name_dm = rp.MTNG_MIMIC_SIM
 
             dm_mtng = bacco.Simulation(basedir=dir_name_dm, halo_file="groups_001/fof_subhalo_history_tab_orph_wweight_001", sim_format='gadget_hdf5',
                                 ngenic_phases=True, phase_type=2, fixedPk=True)
@@ -811,7 +813,7 @@ class tree:
                 self.get_root_info()
 
             print("Loading the number of stars in each subhalo\n")
-            self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
+            self.sub_lenstars = np.fromfile(rp.TREE_DATA + "len_stars.bin", dtype=np.int32)
             print("Done\n")
 
             # Walk the tree
@@ -920,7 +922,7 @@ class tree:
     #             self.get_root_info()
 
     #         print("Loading the number of stars in each subhalo\n")
-    #         self.sub_lenstars = np.fromfile("/cosmos_storage/home/fgmaion/prob-bias/MTNG/tree_data/len_stars.bin", dtype=np.int32)
+    #         self.sub_lenstars = np.fromfile(rp.TREE_DATA + "len_stars.bin", dtype=np.int32)
     #         print("Done\n")
 
     #         try:
